@@ -1,0 +1,404 @@
+---
+title: "Homework 4: Hypothesis Testing, t-tests, and ANOVA"
+author: "Anna Caraveo"
+format: pdf
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+<!--
+Work in this file, render it to PDF, then upload BOTH files -- this .qmd and the
+rendered .pdf -- to Canvas.
+
+Your code is graded, but it does not appear beside your answers: every chunk is
+collected automatically into a Code appendix at the end of the document. Write your
+code in the chunks where it belongs and leave the appendix alone.
+
+Set a seed with set.seed() anywhere your results depend on randomness.
+-->
+
+**Purpose of Homework Assignment 4**
+
+- **DS1 — Summarizing data.** Choose, compute, and interpret numerical and graphical summaries appropriate to a variable's type and distribution, justify the choice, and read an unfamiliar summary or plot critically.
+- **DS2 — Data screening.** Screen a dataset before analyzing it: identify the unit of observation and how the data are structured, quantify and describe the pattern of missing data, distinguish data errors from genuine extreme values, and state how each affects the analysis that follows.
+- **IN2 — Confidence intervals.** Construct an interval by an appropriate method and interpret it in context, stating precisely what is and is not being claimed about the parameter.
+- **IN3 — Hypothesis testing framework.** State null and alternative hypotheses for a research question, explain what a test statistic and p-value do and do not measure, and describe Type I and Type II error in terms of the decision at hand.
+- **IN4 — Comparing means with t-tests.** Carry out one-sample and two-sample t-tests, defend the choice between them, check the assumptions each requires, and interpret the result as a statement about a mean difference.
+- **IN5 — Analysis of variance.** Carry out and interpret a one-way analysis of variance, and explain the F test as a comparison of between-group to within-group variance.
+- **CM1 — Statistical collaboration and communication.** Translate a collaborator's research aim into a testable statistical hypothesis with an explicit estimand and an analysis capable of addressing it, and report the methods and results back in language they can act on, with the reasoning, assumptions, and limitations stated non-technically.
+
+**Write answers in the white space under each question, not inside the code chunks.**
+
+**Provide justification for your responses, a simple "yes" or "no" will not receive credit. Please also be sure to show your work.**
+
+## The data
+
+```{r}
+#| label: setup
+#| echo: true
+library(tidyverse)
+lung <- survival::lung
+```
+
+Recall `wt.loss` is weight lost in the six months
+before enrollment, in pounds. `meal.cal` is calories consumed at meals.
+`ph.ecog` is the physician's ECOG performance score: $0$ means fully active,
+and higher means more functionally impaired.
+
+A collaborator comes to you with a hypothesis: *patients who are more
+functionally impaired are eating less.*
+
+\newpage
+
+::: {.callout-tip}
+## Getting help
+- `t.test()` takes either two vectors, `t.test(x, y)`, or a formula and a data frame, `t.test(y ~ g, data = d)`. It runs **Welch's** test unless you ask for `var.equal = TRUE`.
+- Pull pieces out of a test rather than retyping them: `$statistic`, `$parameter` (the df), `$p.value`, `$conf.int`, `$estimate`.
+- `pt(q, df)` and `pf(q, df1, df2)` are lower-tail areas, like `pnorm()`. `lower.tail = FALSE` flips them.
+- `aov(y ~ g, data = d)` fits a one-way ANOVA and `summary()` prints the table. `anova(lm(y ~ g, data = d))` prints the same thing as a data frame.
+:::
+
+### Question 1 (DS2, IN3) — Before you test anything
+
+a. **[DS2]** For `meal.cal`, compute the proportion of missingness by `sex` and `ph.ecog` (together) and provide the number of subjects that fall into each group (Hint: I consider using `group_by` and `summarize`). 
+
+```{r}
+#| label: q1a
+
+# your code here
+lung |>
+  mutate(
+    sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")), ph.ecog = factor(ph.ecog)) |>
+  group_by(sex, ph.ecog, .drop = FALSE) |>
+  summarize(
+    n = n(),
+    n_missing = sum(is.na(meal.cal)),
+    prop_missing = mean(is.na(meal.cal)),
+    .groups = "drop")
+```
+
+b. **[DS2]** Every analysis below drops incomplete rows. State what that assumes, and say whether your tabulation in (a) makes the assumption easier or harder to believe.
+
+Dropping observations assumes that those observations are not very different than the general average observations seen; in other words, we assume the dropped observations would not have introduced bias. The tabulation makes this assumption easier to assess because if the proportion missing is roughly similar across sex and ECOG groups, that is reassuring as it may just be random. However if missingness is much more common in particular groups than that may be due to a cause that shouldn't be ignored. In this case, it makes it harder to believe because for males at the same ph.ecog of 1 there is a missing proportion of 19.71% compared to the females of 30.95%...fairly big jump just looking at it.
+
+c. **[CM1]** Write $H_0$ and $H_1$ for the collaborator's hypothesis, naming the **estimand** explicitly (the population quantity the hypotheses are about).
+
+The estimand is the population mean meal-calorie intake for each ECOG category.
+H0: The population mean meal-calorie intake is the same for ph.ecog groups 0, 1, and 2.
+H1: At least one ph.ecog group has a different population mean meal-calorie intake.
+
+d. **[CM1]** What do a Type I error and a Type II error would each mean *in terms of the collaborator's question*, and which of the two you would rather make here.
+
+A Type I error would mean concluding that mean meal-calorie intake differs across levels ECOG and function impairment when, in the population, the means are actually equal.
+A Type II error would mean failing to detect a real difference in mean meal-calorie intake across levels of ECOG when they do differ.
+
+In this case, I would prefer to make a type I error, because it could lead to potentially negative changes in nutrition. In type I, false positive, saying there is a difference between ECOG groups and calorie intake means the patient may receive tailored nutrition plan, which likely would not hurt. Where as in the false negative situation the patients may not receive and individual plan; so, a highly active patient may be placed on the same calorie intake plan as a sedentary patient, leading to a dangerous deficit. 
+
+e. **[IN5]** If you tabulate `ph.ecog` (as you should have in a). One level has a single patient in it. What does a group of size $1$ contribute to $\mathrm{SS}_{\text{within}}$ and to the within-group degrees of freedom? How does this group contribute to $\mathrm{MS}_{\text{between}}$? Suggest a way to handle that level.
+
+A group of size 1 contributes 0 to the within-group sum of squares because there is no variation that can be estimated from only one observation and the degree of freedom is also 0 (1-1 = 0). The group does contribute by inflating or distorting the between-group variation because one observation can still be different from the overall mean.
+
+You could cut the ECOG 3 group, because there is only 1 observation in the male group and 0 in the female group. If you can, instead, try to sample more patients in that group, but that very easily may not be reasonable due to time, funds...
+
+
+\newpage
+
+### Question 2 (IN3, IN2) — One mean, interval and test
+
+Set the collaborator's question aside for one question. A published cohort of
+advanced lung cancer patients reported a mean six-month weight loss of
+$12$ lbs. Are these patients different from that?
+
+Note: It may be helpful to first write out the null and alternative hypotheses before proceeding.
+
+Hypotheses->
+H0: The population mean six-month weight loss is 12 pounds.
+H1: The population mean six-month weight loss is not 12 pounds.
+
+a. **[IN3]** Report $n$, $\bar{\mathrm{x}}$, $\mathrm{s}$, and $\widehat{\text{SE}}(\bar{\mathrm{X}})$ for `wt.loss` (hint you can reuse your code from HW2 for `age`). Then compute the test statistic for $H_0: \mu = 12$ and its two-sided $p$-value **from those pieces**, using `pt()` rather than `t.test()`. Confirm both against `t.test()`. **Save your values as objects and reuse them; do not retype numbers.**
+
+Values are printed out using cat() but the test statistics and two sided p-value are confirmed after running the t-test. The values are -2.413898 and 0.01662836, respectively.
+
+```{r}
+#| label: q2a
+
+# your code here
+n <- sum(!is.na(lung$wt.loss))
+xbar <- mean(lung$wt.loss, na.rm = TRUE)
+s <- sd(lung$wt.loss, na.rm = TRUE)
+SE_hat <- s / sqrt(n)
+
+cat('The sample size is:', n)
+cat('\nThe sample mean is:', xbar)
+cat('\nThe sample standard deviation is:', s)
+cat('\nThe estimated standard error is:', SE_hat)
+
+t_wt <- (xbar - 12) / SE_hat
+DoF <- n - 1 
+pvalue <- 2 * pt(abs(t_wt), df = DoF, lower.tail = FALSE) 
+
+cat('\nTest statistic is:', t_wt)
+cat('\npvalue is:', pvalue)
+
+t_test_results <- t.test(lung$wt.loss, mu = 12)
+
+cat('\nt.test statistic:', t_test_results$statistic)
+cat('\nt.test p-value :', t_test_results$p.value)
+```
+
+b. **[IN3]** State your conclusion in one to two sentences. 
+
+Because the p-value is approximately 0.0166, which is less than 0.05, we reject the null hypothesis. The sample mean is approximately 9.8 pounds, which points toward weights potentially being less than 12lbs.
+
+c. **[IN3]** One of the statements below is correct and one is incorrect. Mark each of the following correct or incorrect as a description of a $p$-value you just computed. For the incorrect ones say what is wrong.
+
+  i. The probability that $H_0$ is true *incorrect* A p-value is not the probability that the null hypothesis is true, especially since we can change if we are working with 0.05 or a different value as our benchmark. It's how unusual the observed result would be if the null hypothesis were true. Also, we can accept the null due to lack of evidence for H1, but we cannot say H0 is true and there is for sure no difference. In this case, the p-value was less than 0.05 so we reject H null.
+  ii. The probability of a sample mean at least this far from $12$, if $\mu$ really is $12$ *correct*
+
+d. **[IN2]** Report the $95\%$ confidence interval for $\mu$. For the hypotheses $H_0: \mu = 11$ and $H_0: \mu = 8$, state if the corresponding $p$-values would be less than 0.05.
+
+The 95% confidence interval for the population mean weight loss is approximately 8.061 to 11.602 pounds.
+For the null hypothesis that the population mean is 11 pounds, 11 is inside the confidence interval, so the corresponding two-sided p-value would be greater than 0.05. If the population mean is 8, this is outside of our interval and therefore the p-value would be less than 0.5.
+
+```{r}
+#| label: q2c
+
+# your code here
+t_crit <- qt(0.975, df = DoF)
+lower_ci <- xbar - (t_crit * SE_hat)
+upper_ci <- xbar + (t_crit * SE_hat)
+cat('\n95% Confidence Interval is: (', lower_ci, ',', upper_ci, ')')
+```
+
+\newpage
+
+### Question 3 (IN4, IN2, IN3, CM1) — Two groups
+
+Now a comparison. Do men and women in this cohort lose different amounts of
+weight? In `lung`, `sex` is coded $1$ for male and $2$ for
+female.
+
+Note: It may be helpful to first write out the null and alternative hypotheses before proceeding.
+
+a. **[DS1]** Make one plot that lets you compare the two distributions.
+
+Looking at the boxplots, the males have a larger spread (around 1 to 20) compared to the females (0 to 12...but do have more outliers) for weight loss in six months. The females look to have a slighly bigger positive skew. The females also have a minimum value and lower maximum value.
+
+```{r}
+#| label: q3a
+
+# your code here
+lung |> 
+  drop_na(wt.loss, sex) |> 
+  mutate( 
+    sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female"))
+    ) |> ggplot(aes(x = sex, y = wt.loss)) + geom_boxplot() + labs( x = "Sex", y = "Weight loss in six months (lb)" )
+```
+
+b. **[DS1]** Report $n$, the mean, and the SD of `wt.loss` in each sex. 
+There were 128 males and the mean weight loss is 11.22lbs with a standard deviation of 12.98. There are 86 females with a mean weight loss of 7.76lbs and a standard deviation of 13.18.
+
+```{r}
+#| label: q3b
+
+# your code here
+lung |> 
+  group_by(sex)|> 
+  summarize( n = sum(!is.na(wt.loss)), mean = mean(wt.loss, na.rm = TRUE), sd = sd(wt.loss, na.rm = TRUE), .groups = "drop" )
+```
+
+c. **[IN4]** From the two SDs and the two sample sizes, say whether a single common $\sigma^2$ is believable here.
+
+The SDs are pretty similar. The male SD is 12.98 and the female SD is 13.18 so the ratio is about 1.02. Because the two standard deviations are so similar, assuming a common population variance is reasonable and therefore also a pooled two-sample t-test.
+
+d. **[IN4]** Starting from your output in (b), compute the **pooled** test by hand (copy and paste numbers from above). Confirm your test statistic and p-value again `t.test(..., var.equal = TRUE)`. Note, the numbers will only match to a couple decimal places due to rounding when copying and pasting.
+
+Test statisitic and p-value are confirmed at approximately 1.89 and 0.059, respectively. The rest of the values are output using cat().
+
+```{r}
+#| label: q3d
+
+# your code here
+n_m <- 128
+n_f <- 86
+xbar_m <- 11.22
+xbar_f <- 7.77
+s_m <- 12.98
+s_f <- 13.18
+
+sp2 <- ((n_m - 1) * s_m^2 + (n_f - 1) * s_f^2) /(n_m + n_f - 2)
+sp <- sqrt(sp2) # pooled standard deviation
+se_diff <- sp * sqrt(1/n_m + 1/n_f)
+diff_means <- xbar_m - xbar_f
+t_pooled <- diff_means / se_diff
+df_pooled <- n_m + n_f - 2
+p_pooled <- 2 * pt(abs(t_pooled), df = df_pooled, lower.tail = FALSE)
+
+cat('\nThe pooled standard deviation is:', sp)
+cat('\nThe pooled standard error is:', se_diff)
+cat('\nThe difference in means is:', diff_means)
+cat('\nThe pooled t-statistic is:', t_pooled)
+cat('\nThe pooled degrees of freedom is:', df_pooled)
+cat('\nThe pooled two-sided p-value is:', p_pooled)
+
+
+t.test(wt.loss ~ sex, data = lung, var.equal = TRUE)
+
+```
+
+e. **[IN2]** Report the $95\%$ confidence interval for the difference in means. It contains $0$, but barely. Reconcile that with your $p$-value from (b). and then say what the interval tells the collaborator that the $p$-value does not.
+
+The 95% confidence interval for the difference in mean weight loss between men and women is approximately -0.138 to 7.040 pounds. This agrees with the p-value of about 0.059. Because the p-value is slightly above 0.05, we do not have enough evidence at the 5% significance level to reject the H0 that the population means are equal. The confidence interval provides more information than the p-value alone. It suggests that the observed difference is about 3.45 pounds, but the true difference could plausibly range from essentially no difference to about 7 pounds more weight loss in men.
+
+
+```{r}
+#| label: q3e
+
+# your code here
+t_pooled_result <- t.test(
+  wt.loss ~ sex,
+  data = lung,
+  var.equal = TRUE
+)
+
+t_pooled_result$conf.int
+```
+
+f. **[IN4]** A classmate builds a separate $95\%$ interval for the mean in each sex, notices that the two intervals overlap, and concludes there is no difference. They reached the same conclusion as you, is their reasoning valid? What if they applied the same line of reasoning to non-overlapping intervals?
+
+No, the classmate's reasoning is not valid because and overlap of two separate 95% confidence intervals does not provide a valid test of equality of two means. The appropriate interval for this question is the confidence interval for the difference in means. If the separate 95% intervals do not overlap, that does provide strong evidence of a difference, but the converse is not true: overlapping intervals can still occur when the difference between groups is statistically significant.
+
+g. **[CM1]** Write two to three sentences reporting this comparison to the collaborator (who is an oncologist with no statistical background). Give the estimate and its uncertainty, and say what can or cannot be concluded. 
+
+The estimated mean weight loss was about 11.2 pounds in men and 7.8 pounds in women, a difference of about 3.5 pounds. The 95% confidence interval for the difference was approximately -0.1 to 7.0 pounds. Although men had greater observed weight loss, the data do not provide quite enough evidence at the 5% level to conclude that the population mean weight loss differs between men and women.
+
+\newpage
+
+### Question 4 (DS1, IN5) — More than two groups
+
+Back to the collaborator's hypothesis. ECOG score has more than two levels, so a
+$t$-test will not answer it.
+
+Use the following analysis data set:
+
+```{r}
+#| label: analysis-data
+
+analysis_dat <- lung |>
+  drop_na(meal.cal, ph.ecog) |>
+  mutate(ph.ecog = factor(pmin(ph.ecog, 2)))
+```
+
+a. **[DS1]** Produce a plot with boxplots of the distribution within each group.
+
+ECOG group 1 has the smallest spread and groups 0 and 2 appear more similarly sized in spread but group 2 is larger. Group 2 appears to have a fairly normal distribution while 0 and 1 have a negative skew.
+
+```{r}
+#| label: q4a
+
+# your code here
+ggplot(analysis_dat, aes(x = ph.ecog, y = meal.cal)) +
+  geom_boxplot() +
+  labs(
+    x = "ECOG performance score",
+    y = "Calories consumed at meals"
+  )
+```
+
+
+b. **[DS1]** report $n$, the mean, and the SD of `meal.cal` in each. 
+Reported as a table.
+
+```{r}
+#| label: q4b
+
+# your code here
+analysis_dat |>
+  group_by(ph.ecog) |>
+  summarize(
+    n = n(),
+    mean = mean(meal.cal),
+    sd = sd(meal.cal),
+    .groups = "drop"
+  )
+```
+
+c. **[IN5]** Build the F-test by hand. You do NOT need to copy and paste like with the t-test before. Confirm using `summary(aov())`.
+
+The ANOVA results reveal a statistically significant difference in the mean meal-calorie intake among at least two of the ECOG score levels p = 0.03848448. Because the p-value is less than the 0.05 threshold, we reject the null hypothesis that all ECOG group means are equal.
+
+```{r}
+#| label: q4c
+
+# your code here
+group_stats <- analysis_dat |>
+  group_by(ph.ecog) |>
+  summarize(
+    n = n(),
+    mean = mean(meal.cal),
+    sd = sd(meal.cal),
+    .groups = "drop")
+
+N <- sum(group_stats$n)
+k <- nrow(group_stats)
+
+grand_mean <- mean(analysis_dat$meal.cal)
+SS_between <- sum(group_stats$n *(group_stats$mean - grand_mean)^2)
+SS_within <- sum((group_stats$n - 1) * group_stats$sd^2)
+
+df_between <- k - 1
+df_within <- N - k
+
+MS_between <- SS_between / df_between
+MS_within <- SS_within / df_within
+F_stat <- MS_between / MS_within
+
+p_F <- pf(
+  F_stat,
+  df1 = df_between,
+  df2 = df_within,
+  lower.tail = FALSE
+)
+
+cat('\nSum of Squares Between:', SS_between)
+cat('\nSum of Squares Within:', SS_within)
+cat('\nDegrees of Freedom Between:', df_between)
+cat('\nDegrees of Freedom Within:', df_within)
+cat('\nMean Square Between:', MS_between)
+cat('\nMean Square Within:', MS_within)
+cat('\nF-statistic:', F_stat)
+cat('\nANOVA p-value:\n', p_F)
+
+summary(aov(meal.cal ~ ph.ecog, data = analysis_dat))
+```
+
+\newpage
+
+## Code appendix
+
+Everything you wrote in the chunks above, collected here and labelled by question.
+This section fills itself in — you do not need to touch it.
+
+```{r}
+#| label: appendix
+#| results: asis
+
+# Chunks that were given to you rather than written by you.
+given <- c("setup", "q5-given", "analysis-data", "appendix")
+
+pretty <- function(l) {
+  m <- regmatches(l, regexec("^q([0-9]+)([a-z]?)$", l))[[1]]
+  if (length(m) == 3) {
+    paste0("Question ", m[2], if (nzchar(m[3])) paste0(" (", m[3], ")") else "")
+  } else l
+}
+
+for (l in setdiff(knitr::all_labels(), given)) {
+  code <- knitr::knit_code$get(l)
+  if (!length(code)) next
+  cat("\n\n**", pretty(l), "**\n\n", sep = "")
+  cat("```r\n", paste(code, collapse = "\n"), "\n```\n", sep = "")
+}
+```

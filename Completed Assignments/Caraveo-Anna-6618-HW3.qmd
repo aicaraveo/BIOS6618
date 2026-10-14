@@ -1,0 +1,698 @@
+---
+title: "Homework 3: Confidence Intervals, the CLT, and Simulation Studies"
+author: "Anna Caraveo"
+format: pdf
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+<!--
+Work in this file, render it to PDF, then upload BOTH files -- this .qmd and the
+rendered .pdf -- to Canvas.
+
+Your code is graded, but it does not appear beside your answers: every chunk is
+collected automatically into a Code appendix at the end of the document. Write your
+code in the chunks where it belongs and leave the appendix alone.
+
+Set a seed with set.seed() anywhere your results depend on randomness.
+-->
+
+**Purpose of Homework Assignment 3**
+
+- **DS1 — Summarizing data.** Choose, compute, and interpret numerical and graphical summaries appropriate to a variable's type and distribution, justify the choice, and read an unfamiliar summary or plot critically.
+- **PB1 — Random variables and distributions.** Work with discrete and continuous random variables, compute expectation and variance, and select a distribution that plausibly describes a data-generating process.
+- **PB2 — Sampling distributions and the CLT.** Distinguish the distribution of a variable from the sampling distribution of a statistic, and explain what the central limit theorem does and does not guarantee.
+- **IN1 — Point estimation and standard error.** Compute an estimate and its standard error, distinguish standard error from standard deviation, and explain how sample size affects each.
+- **IN2 — Confidence intervals.** Construct an interval by an appropriate method and interpret it in context, stating precisely what is and is not being claimed about the parameter.
+- **PS2 — Simulation studies.** Design and run a reproducible Monte Carlo study to evaluate the operating characteristics of a method, with code another person can rerun to the same result, and summarize what the study establishes.
+
+**Write answers in the white space under each question, not inside the code chunks.**
+
+**Provide justification for your responses, a simple "yes" or "no" will not receive credit.**
+
+## The data
+
+```{r}
+#| label: setup
+#| echo: true
+
+library(tidyverse)
+
+lung <- survival::lung
+```
+
+We return once more to `lung`, the advanced lung cancer data from Homeworks 1 and 2.
+
+\newpage
+
+::: {.callout-tip}
+## Getting help
+- `qt(p, df)` gives a $t$ quantile the same way `qnorm(p)` gives a Normal one. 
+:::
+
+### Question 1 (IN2) — From an estimate to an interval
+
+In Homework 2 you reported the mean age of these patients and its standard error. Now put the two together.
+
+a. For `age`, report $n$, $\bar{\mathrm{x}}$, $\mathrm{s}$, and $\widehat{\text{SE}}(\bar{\mathrm{X}})$ (compute all using code). Then build the $95\%$ confidence interval for $\mu$ **from those pieces**, using `qt()` for the multiplier rather than typing a number. Confirm that you get the same interval from `t.test()` (extract only the 95% confidence interval). **DO NOT retype any values you have computed when constructing the CI, save them as objects and reuse them as needed.**
+
+For age there were 228 patients, after removing the 'na'. The sample mean is 62.45 years with a sample standard deviation of 9.07 years. The estimated standard error was calculated from $\text{SE}(\bar{\mathrm{X}}) = s/\sqrt{n}$ which was 0.6 years.
+
+For 95% confidence interval found using qt() is [61.2633, 63.63] which is in agreement with the interval found when using t.test().
+
+```{r}
+#| label: q1a
+
+# your code here
+n <- sum(!is.na(lung$age))
+xbar <- mean(lung$age, na.rm = TRUE)
+s <- sd(lung$age, na.rm = TRUE)
+SE_hat <- s / sqrt(n)
+
+cat('The sample size is:', n)
+cat('\nThe sample mean is:', xbar)
+cat('\nThe sample standard deviation is:', s)
+cat('\nThe estimated standard error is:', SE_hat)
+
+margin <- qt(0.975,df=n-1)*s/sqrt(n)
+
+lowerinterval <- xbar - margin
+upperinterval <- xbar + margin
+
+cat('\nThe lower interval is:', lowerinterval, '\nThe upper interval is:', upperinterval)
+
+t.test(lung$age)
+
+```
+
+b. Build the $90\%$ and the $99\%$ intervals as well ("by hand"). Report the width of both (hint: save the intervals as length 2 vectors then do `ninety[2] - ninety[1]`). State what you gain and what you give up moving from $90\%$ to $99\%$.
+
+As you move up in percent interval, the width of CI interval increases and you become more confident that the intervals with contain the population mean more times. So you gain greater confidence but at the cost of less narrow bounds/less precision as shown in our example of 90% CI with a width of 1.98 to 99% CI with a width of 3.121.
+
+```{r}
+#| label: q1b
+
+#90% CI
+t90 <- qt(0.95, df = n-1)
+ninety <- c(
+  xbar - t90 * SE_hat,
+  xbar + t90 * SE_hat
+)
+width_90 <- ninety[2] - ninety[1]
+cat("90% CI:", ninety)
+cat("\n90% width:", width_90)
+
+#99% CI
+t99 <- qt(0.995, df = n-1)
+ninety_nine <- c(
+  xbar - t99 * SE_hat,
+  xbar + t99 * SE_hat
+)
+width_99 <- ninety_nine[2] - ninety_nine[1]
+cat("\n99% CI:", ninety_nine)
+cat("\n99% width:", width_99)
+
+#Note to self, don't need to create vector...could just do lower_CI <- xbar - t90 * SE_hat and upper_CI <- xbar + t90 * SE_hat. Then find the difference. 
+```
+
+c. Rebuild the $95\%$ interval using $1.96$ in place of the $t$ multiplier. Report the $t$ multiplier and both widths. Why the two agree so closely here? What would the comparison look like at $n = 10$ (you don't necessarily need to run anything, your answer may be conceptual).
+
+95% CI is two sided so you have 5% split between the tails (2.5% for each). 1.96 comes from looking at the z-score associated with the cumulative area, which in this case is 95% + 2.5% = 97.5%. Because of the higher sample size, they both agree with the central limit theorem; as n increases and standard deviation, s, becomes more precise the two converge due to low uncertainty. If you change n = 10 then the t-based CI width increases which will create a bigger difference between t multiplier based CI and one based on 1.96. The previous n was 228 which means its closer to the standard normal distribution with a df of 227 than when n = 10 and df = 9 which would have bigger tails and higher critical value/z-score. 
+
+(chart I used: https://archive.math.arizona.edu/rsims/ma464/standardnormaltable.pdf)
+
+```{r}
+#| label: q1c
+
+# your code here
+t95 <- qt(0.975, df = n-1) # 95% CI using t multiplier
+cat("t multiplier:", t95)
+
+ci_t95 <- c(
+  xbar - t95 * SE_hat,
+  xbar + t95 * SE_hat
+)
+
+width_t <- ci_t95[2] - ci_t95[1]
+cat("\nt-based CI width:", width_t)
+
+ci_1.96 <- c( # 95% CI using 1.96
+  xbar - 1.96 * SE_hat,
+  xbar + 1.96 * SE_hat
+)
+
+width_1.96 <- ci_1.96[2] - ci_1.96[1]
+cat("\n1.96 CI width:", width_1.96)
+```
+
+
+d. Four statements about your interval from (a) are below. Mark each correct or incorrect, and for the incorrect ones say what is wrong about the statement.
+
+  i. There is a $95\%$ probability that $\mu$ lies in this interval: **incorrect** $\mu$ is either in the interval or not. 95% is saying if we continue taking samples and creating intervals, 95% of these intervals could contain $\mu$.
+  ii. $95\%$ of patients in this study are between the two endpoints: **incorrect** The intervals are about $\mu$, the mean population age, not about individual patients.
+  iii. If we ran this study many times, $95\%$ of the intervals built this way would contain $\mu$ **correct**
+  iv. If we ran this study again, the new $\bar{\mathrm{x}}$ would fall in this interval $95\%$ of the time **incorrect** This is looking at the current $\mu$, not whether a future sample mean will fall in the interval.
+
+e. Write one sentence reporting the $95\%$ interval to a collaborator who is not a statistician. Keep in mind what population the interval is about (there is no one correct answer, your reasoning is what matters here)?
+
+Based on the patients sampled in this study, we estimate that the average age of the population represented by these patients is between 61.26 and 63.63 years; intervals calculated this way would contain the true population average about 95% of the time.
+
+\newpage
+
+### Question 2 (DS1, PB2) — What exactly has to be Normal?
+
+a. **[DS1]** Plot `age`, describe its shape in one sentence.
+
+It appears that a distribution of age, in my histogram, is unimodal and left-skewed, with most patients between approximately 50 and 75 years old and a longer tail extending toward younger ages and a shorter tail to the right of 75 years.
+
+```{r}
+#| label: q2a
+
+# your code here
+hist( 
+  lung$age,
+  main = "Distribution of Age",
+  xlab = "Age (years)",
+  breaks = 16
+)  #note to self: remember to look at tails NOT peak when determining skew.
+```
+
+b. **[PB2]** A classmate runs `shapiro.test(lung$age)`, gets $p = 0.005$, and concludes that your interval in Question 1 is invalid. Respond. Hint: Which distribution did the assumption behind the $t$ interval actually concern?
+
+Normality assumption here is concerning the sampling distribution of the sample mean/underlying population distribution; t interval does not require the individuals to be normal. With increased amount of 'n', n=228, the central limit theorem makes the sampling distribution of xbar approximately normal even if the individual ages are not perfectly normal.
+
+c. **[PB2]** Another classmate now swings the other way: "$n = 228$ is well past $30$, so the CLT guarantees my interval covers exactly $95\%$ of the time." Explain why this classmate is also wrong.
+
+Coverage of 95% depends on sample size and underlying population distribution. The central limit theorem says as n increases xbar becomes approximately normal Not that at any size of n or n>30 is guaranteed to be normal. Some underlying distributions, such as skewed, can take much larger n's to become normal compared to an already almost normal underlying distribution, for example. 
+
+\newpage
+
+### Question 3 (PB2, PS2) — The mean is not the only statistic
+
+Every statistic computed from a random sample has a sampling distribution. Not
+all of them behave like $\bar{\mathrm{X}}$.
+
+```{r}
+#| label: q3-pop
+#| echo: true
+
+set.seed(618)
+
+pop <- lung |> drop_na(wt.loss) |> pull(wt.loss)
+```
+
+As in Homework 2, treat `pop` as **the entire population** of weight-loss values, so that `mean(pop)`, `median(pop)`, and `max(pop)` are parameters rather than estimates.
+
+a. **[PS2]** Write the simulation: draw $10{,}000$ samples of size $n = 25$ from `pop` (with replacement), recording the sample **median**, the sample **maximum**, and the sample **mean** of each. Set a seed of 6618. 
+
+Printed the first 10 lines of the table.
+
+```{r}
+#| label: q3a
+
+# your code here
+#install.packages("tictoc")
+library(tictoc)
+tic()
+
+set.seed(6618)
+
+B <- 10000
+n <- 25
+
+results <- data.frame( #holder for median, max, and mean
+  median = rep(NA, B),
+  maximum = rep(NA, B), 
+  mean = rep(NA, B) 
+)
+
+for (i in 1:B) { #note to self, R starts at 1 not 0.
+  x <- sample(pop, n, replace = TRUE) #generate one sample
+  results$median[i] <- median(x) #do the calculations
+  results$maximum[i] <- max(x)
+  results$mean[i] <- mean(x)
+
+}
+toc()
+head(results, 10)
+```
+
+b. **[PB2]** Report the population median, maximum, and mean, together with the mean of each set of $10{,}000$ statistics. Is each statistic centered on the population quantity it is estimating (unbiased)? 
+
+:::{.callout-note}
+
+Note: We take the mean of the sampling distribution regardless of the statistic. For example, the sample median is an estimate for the population median and the average sample median is the expected value of the median as an estimator.
+
+:::
+
+The median for the population is 7.0 while the sampling distribution mean is 6.903...close but slightly biased. The maximum for the population is 68 while the sampling distribution maximum is 42.863 which is a larger difference and bias downward. The mean for both match closely at 9.83 making it unbiased.
+
+Reasoning for the maximum being biased: when you sample, you may not get a sample containing the actual largest value so the one reported is just the highest in the sample. For median: the median is not as balanced as mean as it depends on the middle value. In this case, observations have a slightly higher chance of being below 7 so with continued sample taking it balances just below 7.
+
+```{r}
+#| label: q3b
+
+# your code here
+population_values <- c(
+  median = median(pop),
+  maximum = max(pop),
+  mean = mean(pop)
+)
+
+sampling_means <- c(
+  median = mean(results$median),
+  maximum = mean(results$maximum),
+  mean = mean(results$mean)
+)
+
+data.frame(
+  population = population_values,
+  sampling_distribution_mean = sampling_means
+)
+```
+
+
+c. **[PB2]** Plot all three sampling distributions. Describe the **shape** of each of the three sampling distributions. Is each one bell-shaped and symmetric? Which of these does the CLT apply to?
+
+The median distribution is bell shaped and is right/positive skew. The maximum distribution is not bell shaped and not symmetrical. It has a clumped but broken up pieces. The largest peak lies just below 40 and then has a left tail but no right tail. To the right of the peak is staggered counts never reaching above 1100 whereas the main peak was above 3500 counts. The mean distribution is bell shaped and pretty symmetrical, although you can notice a slightly longer right tail. The CLT applies to the mean. 
+
+```{r}
+#| label: q3c
+
+# your code here
+library(ggplot2)
+
+ggplot(results, aes(x = median)) +
+  geom_histogram(bins = 12) +
+  labs(
+    title = "Sampling Distribution of the Sample Median",
+    x = "Sample Median",
+    y = "Count"
+  )
+
+ggplot(results, aes(x = maximum)) +
+  geom_histogram(bins = 12) +
+  labs(
+    title = "Sampling Distribution of the Sample Maximum",
+    x = "Sample Maximum",
+    y = "Count"
+  )
+
+ggplot(results, aes(x = mean)) +
+  geom_histogram(bins = 15) +
+  labs(
+    title = "Sampling Distribution of the Sample Mean",
+    x = "Sample Mean",
+    y = "Count"
+  )
+
+```
+
+\newpage
+
+### Question 4 (PB1, PS2) — Simulating a derivation
+
+Expectations pass through linear operations and not nonlinear ones. Demonstrate this by simulation, using $\mathrm{X} \sim \text{Gamma}(\text{shape} = 25,\ \text{rate} = 5)$ throughout.
+
+a. **[PB1]** From the shape and rate alone, state $\mathbb{E}(\mathrm{X})$ and $\text{Var}(\mathrm{X})$ for this distribution. Use the back of Casella and Berger or [Wikipedia](https://en.wikipedia.org/wiki/Gamma_distribution).
+
+Shape is alpha and rate is beta = 1/theta 
+E(X) = alpha/beta = Shape/rate -> 25/5 = 5
+Var(X) = alpha/beta^2 = Shape/rate^2 -> 25/5^2 = 1
+
+b. **[PS2]** Draw a SINGLE large sample (~1e6) from it and confirm both values in (a). Note: This is a bit different from the simulations we covered in lecture.
+
+The results are very close to the values in a. The mean is 5.00042 here, which was an integer of 5 in 'a' and the variance here is 1.000695 which was an integer 1 in 'a'. 
+
+```{r}
+#| label: q4b
+
+# your code here
+#?rgamma
+set.seed(6618)
+
+x <- rgamma(1e6, shape = 25, rate = 5)
+
+cat('The mean is:', mean(x))
+cat('\nThe variance is:', var(x))
+```
+
+c. **[PB1]** Compare $\mathbb{E}(1/\mathrm{X})$ to $1/\mathbb{E}(\mathrm{X})$, and $\mathbb{E}(2\mathrm{X} + 5)$ to $2\,\mathbb{E}(\mathrm{X}) + 5$. Report all four numbers and say which pair agrees and why.
+
+E(1/X) = 0.208 and 1/E(X) = 0.199. The pair does not agree because E(1/X) is finding the average of X values first and then 1 is divided by that number. 1/E(X) is calculating the reciprocal first, so 1/the value of each x. These are then averaged. 
+
+E(2X+5) = 15.00084 and 2E(X)+5 = 15.00084. This linear pair does agree because of the rule E(aX+b) = aE(x)+b. So E(2X+5) = 2E(X)+5. 
+
+```{r}
+#| label: q4c
+
+# your code here
+EX <- mean(x)
+
+E_inverse <- mean(1 / x)
+inverse_E <- 1 / EX
+cat("E(1/X):", E_inverse)
+cat("\n1/E(X):", inverse_E)
+
+E_linear <- mean(2 * x + 5)
+linear_E <- 2 * EX + 5
+cat("\nE(2X + 5):", E_linear)
+cat("\n2E(X) + 5", linear_E)
+```
+
+d. **[PB1]** Now do the same for spread. Let $\mathrm{Y} = 2\mathrm{X} + 5$. Compare the simulated $\text{Var}(\mathrm{Y})$ to what theory suggests it should be.
+
+The +5 is a constant which shifts all the values by same amount, doesn't affect the spread. Therefore, the variance is the same for the simulated and the theoretical.
+
+```{r}
+#| label: q4d
+
+# your code here
+y <- 2 * x + 5
+
+simulated_var <- var(y)
+theoretical_var <- 4 * var(x) #note to self, remember Var(aX+b) =a^2Var(X) andy = 2x+5 a = 2 and b =5 so Var(y) = 2^2Var(x) = Var(y) = 4var(x)
+
+cat("Simulated Var(Y):", simulated_var)
+cat("\nTheoretical Var(Y):", theoretical_var)
+
+```
+
+\newpage
+
+### Question 5 (IN1, PS2) — What makes an estimator good
+
+When the distribution is symmetric, $\mu$ could be estimated by the sample mean, the sample median, the midpoint of the range, or simply the first observation $\mathrm{X}_1$. All four are estimators, all four are random variables, and we need criteria to choose.
+
+a. **[PS2]** Set your see to 6618 (again). Draw $10{,}000$ samples of size $n = 15$ from $\mathcal{N}(10, 3^2)$. For each sample compute all four estimators of $\mu$.
+
+Printed the first ten of the table to show sample and their estimators.
+
+```{r}
+#| label: q5a
+
+# your code here
+tic()
+set.seed(6618)
+
+opt <- list(iter = 1:10000, n = 15, mu = 10, sigma = 3)
+
+res <- expand.grid(opt)
+
+res$mean <- NA_real_
+res$median <- NA_real_
+res$midpoint <- NA_real_
+res$first <- NA_real_
+
+set.seed(6618)
+
+for (i in 1:nrow(res)) {
+  x <- rnorm(res$n[i], res$mu[i], res$sigma[i])
+  
+  res$mean[i] <- mean(x)
+  res$median[i] <- median(x)
+  res$midpoint[i] <- (min(x) + max(x)) / 2
+  res$first[i] <- x[1]
+}
+toc()
+head(res, 10)
+```
+
+b. **[PS2]** Set `eval: true` in the chunk below and make edits as needed to report the empirical **bias**, **variance**, and **MSE** of each estimator as one table. Then add a single line of code (hint: see `?mutate`) to verify numerically that $\text{MSE} = \text{Var} + \text{Bias}^2$.
+
+```{r}
+#| label: q5b
+#| eval: true
+
+
+results <- res %>%
+  pivot_longer(
+    cols = mean:first,
+    names_to = "measure",
+    values_to = "estimate"
+  ) %>%
+  group_by(measure) %>%
+  summarise(
+    bias = mean(estimate - mu),
+    mc_se = sd(estimate - mu) / sqrt(10000),
+    variance = mean((estimate - mean(estimate))^2),
+    MSE = mean((estimate - mu)^2)
+  )
+
+results %>%
+  mutate(check = variance + bias^2)
+```
+
+c. **[IN1]** Compare the variance of $\bar{\mathrm{X}}$ in your table against the $\sigma^2/n$ you would expect. Then compute the relative efficiency of the median to the mean, $\text{Var}(\text{median})/\text{Var}(\bar{\mathrm{X}})$, what does it costs you to use the median here. Hint: what does efficiency refer to here?
+
+A lower variance is more efficient than a higher variance. The variance for the mean is around 0.6, for both the empirical and theoretical while the variance of the median to mean (median/mean) is 1.49...so the median has about 1.49x the variance than the mean making it less efficient. 
+
+```{r}
+#| label: q5c
+
+# your code here
+sigma <- 3
+n     <- 15
+
+mean_variance_theory <- sigma^2 / n
+
+mean_variance_empirical <- results$variance[
+  results$measure == "mean"
+]
+
+median_variance <- results$variance[
+  results$measure == "median"
+]
+
+relative_efficiency <- median_variance / mean_variance_empirical
+
+cat("Theoretical Var(mean):", mean_variance_theory)
+cat("\nEmpirical Var(mean):", mean_variance_empirical)
+cat("\nMedian / Mean variance:", relative_efficiency)
+```
+
+d. **[PS2]** Change one part of the truth and leave the rest of the study alone: each observation is now drawn from $\mathcal{N}(10, 3^2)$ with probability $0.9$ and from $\mathcal{N}(10, 15^2)$ with probability $0.1$. Report the same three columns. Hint: Sample the sd in a line before calling `rnorm` using `sds <- sample(c(res$sd1[i], res$sd2[i]), res$n[i], replace = TRUE, prob = c(res$p1[i], res$p2[i]))`. The code is started for you below.
+
+```{r}
+#| label: q5e
+
+# your code here
+set.seed(6618)
+
+opt <- list(iter = 1:10000, n = 15, mu = 10, sd1 = 3, sd2 = 15, p1 = 0.9, p2 = 0.1)
+res <- expand.grid(opt)
+res$mean     <- NA_real_
+res$median   <- NA_real_
+res$midpoint <- NA_real_
+res$first    <- NA_real_
+
+for (i in 1:nrow(res)) {
+  
+  sds <- sample(
+    c(res$sd1[i], res$sd2[i]),
+    res$n[i],
+    replace = TRUE,
+    prob = c(res$p1[i], res$p2[i])
+  )
+  
+  x <- rnorm(
+    res$n[i],
+    mean = res$mu[i],
+    sd = sds
+  )
+  
+  res$mean[i] <- mean(x)
+  res$median[i] <- median(x)
+  res$midpoint[i] <- (min(x) + max(x)) / 2
+  res$first[i] <- x[1]
+}
+
+res %>%
+  pivot_longer(
+    cols = mean:first,
+    names_to = "measure",
+    values_to = "estimate"
+  ) %>%
+  group_by(measure) %>%
+  summarise(
+    bias = mean(estimate - mu),
+    variance = mean((estimate - mean(estimate))^2),
+    MSE = mean((estimate - mu)^2)
+  )
+```
+
+e. **[IN1]** Which estimator wins under contamination, and what does the change in ranking tell you about the phrase "the sample mean is the best estimator of $\mu$"?
+ 
+In this case the median is the best estimator under contamination as it has the lowest variance/MSE of 1.09 with the next lowest being mean at 2.06 and midpoint and first value being a fair bit higher at 32.79 and 29.53 respectively. Mean is the best under normality but it is more senstitive when there are extreme values whereas median is not as much. 
+
+
+\newpage
+
+### Question 6 (PS2, IN2) — Coverage under four populations
+
+Lecture 6 showed a grid of sixteen histograms: four populations -- Uniform, Exponential, Bimodal, and Bernoulli$(0.1)$ -- with the sampling distribution of $\bar{\mathrm{X}}$ at four sample sizes, converging onto the same Normal curve at four very different speeds.
+
+That grid was about a *shape*. This question different version of the same thing: at each of those sample sizes, does the interval we actually use, $\bar{\mathrm{x}} \pm t_{n-1,\,0.975}\,\mathrm{s}/\sqrt{n}$, cover $\mu$ $95\%$ of the time?
+
+The four populations and their true means are given to you:
+
+```{r}
+#| label: q6-given
+#| echo: true
+
+generate <- function(n, dist, ...) {
+  switch(dist,
+    uniform     = runif(n),
+    exponential = rexp(n, rate = 1),
+    bimodal     = rnorm(n, mean = sample(c(-2, 2), n, replace = TRUE), sd = 0.5),
+    bernoulli   = rbinom(n, size = 1, prob = 0.1))
+}
+
+truth <- c(uniform = 0.5, exponential = 1, bimodal = 0, bernoulli = 0.1)
+
+opt <- list(
+  iter = 1:2000,
+  n    = c(5, 10, 30, 100),
+  dist = c("uniform", "exponential", "bimodal", "bernoulli")
+)
+res    <- expand.grid(opt, stringsAsFactors = FALSE)
+res$mu <- truth[res$dist]
+res$covered <- NA_real_
+```
+
+Use $B = 2{,}000$ replications per cell and $n \in \{5, 10, 30, 100\}$, giving sixteen cells of results. I've already set up the results frame for you... but make sure the steps make sense.
+
+a. **[PS2]** Run the study and report the coverage as a table of four populations by four sample sizes.
+
+```{r}
+#| label: q6a
+
+# your code here
+
+tic()
+set.seed(6618)
+
+for (i in 1:nrow(res)) {
+  
+  x <- generate(res$n[i], res$dist[i])
+  
+  xbar <- mean(x)
+  s <- sd(x)
+  
+  if (is.na(s) || s == 0) {
+    res$covered[i] <- NA
+  } else {
+    tcrit <- qt(0.975, df = res$n[i] - 1)
+    
+    lower <- xbar - tcrit * s / sqrt(res$n[i])
+    upper <- xbar + tcrit * s / sqrt(res$n[i])
+    
+    res$covered[i] <- (
+      lower <= res$mu[i] &&
+      upper >= res$mu[i]
+    )
+  }
+}
+
+toc()
+
+round(
+  with(res, tapply(covered, list(dist, n), mean, na.rm = TRUE)),
+  4
+)
+```
+
+b. **[PS2]** Summarise the coverage by dist and n. Report how many replications failed in each of the sixteen cells. Hint: how do you know if a replication failed? It will be related to what you have to do to get `mean` to work.
+
+The coverage was calculated separately for each distribution and sample size using the proportion of non-failed confidence intervals that contained the true population mean. A failed replication was identified by an 'NA' value in 'covered', which occurred when the sample standard deviation was zero and a valid confidence interval could not be calculated.
+
+Bernoulli: failures decrease dramatically as n increases: 1191 -> 706 -> 97 -> 0.
+Bimodal, Exponential, Uniform: 0 failures in all four sample sizes.
+The Exponential distribution has the lowest coverage at n=5: 0.881, or 88.1% and the Bernoulli distribution has extremely high coverage among successful samples at small n, but drops to 0.925 at n=100.
+
+```{r}
+#| label: q6b
+
+# your code here
+coverage_summary <- res %>%
+  group_by(dist, n) %>%
+  summarise(
+    coverage = mean(covered, na.rm = TRUE),
+    failures = sum(is.na(covered)),
+    .groups = "drop"
+  )
+
+coverage_summary
+```
+
+c. **[PS2]** Explain what kind of sample causes `t.test()` to "fail", why the failures land in the cells they do, and why the number shrinks as $n$ grows.
+
+This happens when a simulated sample has zero sample standard deviations and each observation is the same. So when s = 0: 0/sqrt(n) = 0. This may happen for a Bernoulli, for instance, because it has binary answers of either 0, 1 and for low n that can be pretty easy to get all 0's.
+
+d. **[IN2]** Save the summary from (b) and then use it to plot coverage against $n$, with one line per distribution and a horizontal reference line at $0.95$. Comment on the coverage.
+
+The coverage differs among the four populations, especially at the smaller sample sizes. One population starts at a coverage of about 1.00 when (n=5), then decreases as n increases, reaching about 0.99 at n=30, before leveling off. The other populations start closer to the 0.95 reference line at n=5, around 0.93, and show a slight increase with increasing sample size. One of these lines rises above the 0.95 level before leveling off. The fourth population has much lower coverage at n=5, around 0.30, but increases rapidly as the sample size increases, reaching about 0.94 by n=30, and then levels off slightly below the 0.95 reference line. As n increases, the coverage generally becomes more stable and tends to get closer to the nominal 0.95 level, although some distributions remain slightly above or below 0.95.
+
+```{r}
+#| label: q6c
+
+# your code here
+coverage_summary <- res %>%
+  group_by(dist, n) %>%
+  summarise(
+    coverage = mean(covered, na.rm = TRUE),
+    failures = sum(is.na(covered)),
+    .groups = "drop"
+  )
+
+ggplot(
+  coverage_summary,
+  aes(x = n, y = coverage, group = dist)
+) +
+  geom_line() +
+  geom_point() +
+  geom_hline(
+    yintercept = 0.95,
+    linetype = "dashed"
+  ) +
+  scale_x_continuous(
+    breaks = c(5, 10, 30, 100)
+  ) +
+  labs(
+    x = "Sample size",
+    y = "Coverage",
+    title = "Coverage of 95% t Confidence Intervals"
+  )
+
+```
+
+\newpage
+
+## Code appendix
+
+Everything you wrote in the chunks above, collected here and labelled by question.
+This section fills itself in — you do not need to touch it.
+
+```{r}
+#| label: appendix
+#| results: asis
+
+# Chunks that were given to you rather than written by you.
+given <- c("setup", "q3-pop", "q6-given", "q7-broken", "appendix")
+
+pretty <- function(l) {
+  m <- regmatches(l, regexec("^q([0-9]+)([a-z]?)$", l))[[1]]
+  if (length(m) == 3) {
+    paste0("Question ", m[2], if (nzchar(m[3])) paste0(" (", m[3], ")") else "")
+  } else l
+}
+
+for (l in setdiff(knitr::all_labels(), given)) {
+  code <- knitr::knit_code$get(l)
+  if (!length(code)) next
+  cat("\n\n**", pretty(l), "**\n\n", sep = "")
+  cat("```r\n", paste(code, collapse = "\n"), "\n```\n", sep = "")
+}
+```

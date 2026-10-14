@@ -1,0 +1,404 @@
+---
+title: "Homework 2: Random Variables, Sampling Distributions, and Point Estimation"
+author: "Anna Caraveo"
+format: pdf
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+<!--
+Work in this file, render it to PDF, then upload BOTH files -- this .qmd and the
+rendered .pdf -- to Canvas.
+
+Your code is graded, but it does not appear beside your answers: every chunk is
+collected automatically into a Code appendix at the end of the document. Write your
+code in the chunks where it belongs and leave the appendix alone.
+
+Set a seed with set.seed() anywhere your results depend on randomness.
+-->
+
+**Purpose of Homework Assignment 2**
+
+- **PB1 — Random variables and distributions.** Work with discrete and continuous random variables, compute expectation and variance, and select a distribution that plausibly describes a data-generating process.
+- **PB2 — Sampling distributions and the CLT.** Distinguish the distribution of a variable from the sampling distribution of a statistic, and explain what the central limit theorem does and does not guarantee.
+- **IN1 — Point estimation and standard error.** Compute an estimate and its standard error, distinguish standard error from standard deviation, and explain how sample size affects each.
+
+**Write answers in the white space under each question, not inside the code chunks.**
+
+**Provide justification for your responses, a simple "yes" or "no" will not receive credit.**
+
+## The data
+
+```{r}
+#| label: setup
+#| echo: true
+
+library(tidyverse)
+
+lung <- survival::lung
+```
+
+We return to `lung`, the advanced lung cancer data you screened in Homework 1.
+
+\newpage
+
+::: {.callout-tip}
+## Getting help
+- Every distribution in R comes with four functions. For the Normal they are `dnorm()`, `pnorm()`, `qnorm()`, and `rnorm()`; swap `norm` for `pois`, `binom`, `exp`, and so on. Asking for the help documentation for each gives you the help documentation for all 4 functions.
+- `replicate(B, expr)` runs `expr` `B` times and collects the results.
+- `sample(x, n, replace = TRUE)` draws `n` values with replacement from the vector `x`.
+:::
+
+### Question 1 (PB1) — Mass, density, and the CDF
+
+A clinic sees a random number of no-shows each day. Model the daily count as
+$\mathrm{X} \sim \text{Poisson}(3)$. Separately, model adult systolic blood
+pressure as $\mathrm{Y} \sim \mathcal{N}(120, 15^2)$.
+
+Answer every part with R rather than by hand, using the `d`, `p`, and `q` functions.
+
+```{r}
+#| label: q1
+
+# your code here
+dpois(0, 3)
+ppois(2, 3)
+1 - ppois(2, 3)
+# ?pnorm
+pnorm(140, mean = 120, sd = 15, lower.tail = FALSE) #False, to get right tail, not left
+qnorm(0.95, mean = 120, sd = 15) #looking for topmost 5% which means 95% are below our y 
+```
+
+a. For the no-shows: report $P(\mathrm{X} = 0)$, $P(\mathrm{X} \le 2)$, and $P(\mathrm{X} \ge 5)$. Name the function you used for each and say in one sentence why that is the right one.
+
+𝑃(X= 0) I used dpois(), because we are looking at an exact number of occurrences, 0. The problem directly stated this is a Poisson which is my I switched out the norm to pois. This came out to be 4.97% probability of zero no shows in a day.
+
+𝑃(X≤ 2) I used ppois() because this is a cumulative distribution, asking the probability of having two or less no shows in a day. This came out to be a 42.32% probability there would be 0 to 2 no shows in a day.
+
+𝑃(X≥ 5) I used ppois() again because this is looking at the cumulative, but now this is asking about the right tail so 1-pois(). This resulted in 57.68% probability of having five or more no shows in a day.
+
+b. For blood pressure: report $P(\mathrm{Y} > 140)$ **and** the value $y$ that $5\%$ of adults exceed.
+
+In the question description it says this is a normal distribution with a mean of 120 and a standard deviation of 15. Plugging these values in along with our question (pnorm(q, mean = 0, sd = 1, lower.tail = TRUE, log.p = FALSE), found by using ?pnorm), the outcome is 9.12% is greater than 140 blood pressure reading. 
+
+For the second part, now the inverse is being asked/we are given a probability and wanting to find a 'count'. Using qnorm(), this shows that 5% of adults exceed 144.67 blood pressure reading.
+
+c. `dpois(3, 3)` returns $0.224$ and `dnorm(120, 120, 15)` returns $0.027$. One of those two numbers is a probability and the other is not. Which is which, and what is the one that is not?
+
+dpois(), discrete, is looking at an exact value (3) and its probability (P(X~3)=0.224) (PMF). dnorm(), continuous, is looking at the area under a curve/density, so probability density (PDF), not a probability.
+
+Essentially, dpois, on a histogram is looking at one specific bar of counts to get a probability where dnorm is a point on a curve which can take on infinite number of values, so gives relative height on that curve.
+
+\newpage
+
+### Question 2 (PB1) — Expectation and variance, and picking a family
+
+a. Suppose weight loss $\mathrm{X}$, measured in pounds, has $\mathbb{E}(\mathrm{X}) = 9.8$ and $\text{SD}(\mathrm{X}) = 13.1$. A collaborator wants everything in kilograms, so define $\mathrm{Y} = \mathrm{X}/2.205$. Give $\mathbb{E}(\mathrm{Y})$, $\text{Var}(\mathrm{Y})$, and $\text{SD}(\mathrm{Y})$. Give units with your answer.
+
+$\bar{y} = \frac{9.8}{2.205} = 4.44\text{ kg}$
+$s_y = \frac{13.1}{2.205} = 5.94\text{ kg}$
+$s_y^2 = 5.94^2 = 35.29\text{ kg}^2$
+
+b. Let $\mathrm{X}_1$ and $\mathrm{X}_2$ be the weight losses of two different patients, each with variance $\sigma^2$. Calculate $\text{Var}(\mathrm{X}_1 + \mathrm{X}_2)$, and state the assumption you needed. 
+
+Var(X1 + X2) = Var(X1) + Var(X2) + 2Cov(X1, X2)
+Cov() goes to 0 if the assumption of independence is made between the two patients 
+Var(X1 + X2) = Var(X1) + Var(X2) + 0
+Var(X1 + X2) = $\sigma^2$ + $\sigma^2$
+Var(X1 + X2) = $2\sigma^2$
+
+c. Describe a realistic way that assumption you made in (b) could fail in this study **and** say whether ignoring the failure would make you *more* or *less* confident than you should be.
+
+If both patients are participating in the same weight loss program, (same exercises, diet, maybe even workout together, and such), they may both have weight loss and have a positive covariance. In this case the covariance would be greater than 0 and therefore the variance is underestimated. 
+
+If they are both competing for the same dietary coach (with limited time available) and one patient gets more sessions, and thus limiting the ones available for the other, than the one that got more sessions may lose more weight and the one that didn't get their sessions lost less weight as consequence. This covariance would decrease and the variance would be overestimated.
+
+\newpage
+
+### Question 3 (PB1) — Picking a Family
+
+For each outcome below, name a distribution family you would use and justify it **from the mechanism** (what generated the number) in one sentence.
+
+a. Whether or not a patient is readmitted within 30 days
+
+This is yes/no binary answer (mutually exclusive outcomes), so Bernoulli. 
+
+b. Number of falls a nursing-home resident has in a year
+
+These are independent counts over a fixed time period, so Poisson. 
+
+c. Days from surgery to discharge, assuming days can be partial
+
+I would initially say normal, because it's continuous, but this would create a skew due to no negative values, so perhaps an exponential.
+
+\newpage
+
+### Question 4 (PB2) — Two histograms that get confused
+
+We will do what we did in class with the penguins: pretend we have the whole
+population so that we can see something we normally never get to see.
+
+```{r}
+#| label: q4-pop
+#| echo: true
+
+set.seed(618)
+
+pop <- lung |> drop_na(wt.loss) |> pull(wt.loss)
+samp10 <- replicate(4000, mean(sample(pop, 10, replace = TRUE)))
+samp50 <- replicate(4000, mean(sample(pop, 50, replace = TRUE)))
+```
+
+Treat `pop` as **the entire population** of weight-loss values for this question. Since it is a population, `mean(pop)` is $\mu$ and `sd(pop)` is $\sigma$ -- these are parameters, not estimates. `samp10` and `samp50` provide sample means from samples of size 10 and 50 respectively across 4,000 replications.
+
+a. Plot the distribution of `pop` and report $\mu$ and $\sigma$. Describe the shape in one sentence.
+
+The population mean weight loss is 9.831 and standard deviation is 13.139. The plot distribution is right skewed by visuals and when I also look at median(), this value (7.0) is smaller than the mean (9.83) which also coincides. So, in other words, most patients had lower amounts of weight loss and less had greater weight loss, which creates the right tail.  
+
+```{r}
+#| label: q4a
+
+# your code here
+hist(pop, breaks = 15,
+     xlab = "Weight Loss",
+     ylab = "Frequency",
+     main = "Distribution of Weight Loss")
+
+cat('Median is:', median(pop))
+cat('\nMean is:', mean(pop))
+cat('\nsd is:', sd(pop))
+
+```
+
+b. Plot the two sampling distributions **on the same x-axis limits as your plot in (a)**, and describe what changes and what does not.
+
+As sample size increases, the standard deviation shrinks and the histogram becomes less wide. The mean does not change, the peak remains in the same location. 
+
+
+```{r}
+#| label: q4b
+
+# your code here
+par(mfrow = c(1, 3)) #so I can see both plots at once
+
+hist(pop,
+     breaks = 15,
+     xlim = range(pop),
+     xlab = "Weight Loss",
+     ylab = "Frequency",
+     main = "Population")
+
+hist(samp10,
+     breaks = 15,
+     xlim = range(pop),
+     xlab = "Weight Loss",
+     ylab = "Frequency",
+     main = "Sampling Distribution (n = 10)")
+
+hist(samp50,
+     breaks = 15,
+     xlim = range(pop),
+     xlab = "Weight Loss",
+     ylab = "Frequency",
+     main = "Sampling Distribution (n = 50)")
+
+par(mfrow = c(1, 1))
+
+```
+
+c. Report the mean and standard deviation of each sampling distribution (aka the SE of the mean). Compare each pair against $\mu$ and $\sigma/\sqrt{n}$. Do the simulation and the theory agree?
+
+The simulation and theory agree. The simulated means (9.81 for n = 10, and 9.84 for n = 50) are both very close to the theoretical mean (9.83). The simulated standard errors are also close to the theoretical (simulated n = 10: 4.11 vs theoretical of 4.15 for n = 10 and simulated n = 50: 1.82 vs theoretical of 1.85 for n = 50).
+
+```{r}
+#| label: q4c
+
+# your code here
+mu <- mean(pop)
+sigma <- sd(pop)
+
+cat('Mean of population is:', mu, 'and the standard deviation of the population is:', sigma)
+
+cat('\nThe theoretical standard error for n = 10 is:', sigma / sqrt(10))
+cat('\nThe theoretical standard error for n = 50 is:', sigma / sqrt(50))
+
+cat('\nThe simulated mean for n = 10 is:', mean(samp10))
+cat('\nThe simulated standard error for n = 10 is:', sd(samp10))
+
+cat('\nThe simulated mean for n = 50 is:', mean(samp50))
+cat('\nThe simulated standard error for n = 50 is:', sd(samp50))
+
+```
+
+d. A classmate looks at your $n = 50$ histogram and concludes: "weight loss is Normally distributed in this population." Is this statement accurate?
+
+No, because n = 50 histogram is only looking at sampling distribution of sample means not the values of weight loss in a population. This looks normal due to central limit theorem; which does not mean the actual population is normally distributed. 
+
+e. Which of the three histograms you have now plotted would you show a collaborator who asks "how much do patients differ in weight loss?" Which would you show one who asks "how well do we know the average weight loss?"
+
+I would show them the plot from part 'a' for "how much do patients differ in weight loss?". Because the histogram shows the individual weight-loss values for patients in the population and therefore shows how much the patients differ from one another.
+
+I would show them plot n = 50 for "how well do we know the average weight loss?". Because this histogram shows the distribution of sample means from repeated samples of 50 patients. The smaller spread shows that the sample mean is more consistent and gives us a better idea of the population's average weight loss.
+
+\newpage
+
+### Question 5 (IN1) — Estimator, estimate, and standard error
+
+Now stop pretending. `lung` is a **sample**, and $\mu$, the mean age of patients in the population it came from, is unknown.
+
+a. For `age`, report $n$, the sample mean, the sample standard deviation $\mathrm{s}$, and the estimated standard error of the mean $\widehat{\text{SE}}$. Make sure your work is clear connecting the last two.
+
+For age there were 228 patients, after removing the 'na'. The sample mean is 62.45 years with a standard deviation of 9.07 years. The estimated standard error was calculated from $\text{SE}(\bar{\mathrm{X}}) = s/\sqrt{n}$ which was 0.6 years.
+
+```{r}
+#| label: q5a
+
+# your code here
+n <- sum(!is.na(lung$age))
+xbar <- mean(lung$age, na.rm = TRUE)
+s <- sd(lung$age, na.rm = TRUE)
+SE_hat <- s / sqrt(n)
+
+cat('The sample size is:', n)
+cat('\nThe sample mean is:', xbar)
+cat('\nThe sample standard deviation is:', s)
+cat('\nThe estimated standard error is:', SE_hat)
+
+```
+
+b. In Lecture 4 (like question 4) we wrote $\text{SE}(\bar{\mathrm{X}}) = \sigma/\sqrt{n}$, with no hat. In part (a) you wrote $\widehat{\text{SE}}$. What changed, and why does the hat belong there?
+
+SE without a hat uses sigma, σ,the population standard deviation which, we do not know. Therefore, we use s, sample standard deviation, to estimate σ in SE with a hat to indicate this is an estimate rather than a true theoretical standard error.
+
+c. Two of the following four statements are written correctly and two are not. Mark each and, for the incorrect ones, say what is wrong or correct the statement.
+
+::: {.medium}
+| | Statement | Answer/Explanation |
+|---|---|---|
+| i | $\bar{\mathrm{x}} = 62.4$ is our estimate of $\mu$ | Correct |
+| ii | $P(\bar{\mathrm{x}} > 64) = 0.03$ | Incorrect. This should be a big X bar, $\bar{\mathrm{X}}$, because this signifies a random variable, whereas small x bar, $\bar{\mathrm{x}}$, signifies a fixed variable or observed sample mean. Probability statements should use random variables. |
+| iii | $\bar{\mathrm{X}}$ is a random variable with $\mathbb{E}(\bar{\mathrm{X}}) = \mu$ | Correct |
+| iv | The standard error of $62.4$ is $0.6$ | Incorrect. $62.4$ is the observed number, but standard error describes the sampling distribution of the sample mean, not the observed value. It should be "estimated standard error of the sample mean, $\bar{\mathrm{X}}$, is $0.6$." |
+:::
+
+d. Write two sentences reporting `age`: one describing **the patients in this study**, and one describing **how precisely we know $\mu$**. Each should be of the general form "Mean age of patients in [some group] was ... with a [some measure of variability]."
+
+The mean age of patients in this study was 62.45 years with a standard deviation of 9.07 years.
+The mean age of the population was estimated to be 62.45 years, with an estimated standard error of 0.6 years.
+
+e. If standard deviation was mistaken for standard error or vice versa, how far off would the conclusion be? 
+
+The standard deviation is 9.07 and the standard error is 0.6. That would be 15x difference between the two (9.07/0.6 = 15). If you reported SD instead of SE you'd be saying the mean was estimated with an estimated standard error of about 9.1 years instead of 0.6, which looks less precise. If you reported SE instead of SD you would say patients' ages vary by only about 0.6 years, when they actually vary by about 9.1 years. That would make the patients appear much more similar in age than they really are.
+
+\newpage
+
+### Question 6 (IN1) — Estimating $\sigma$, and what more data buys
+
+Everything in Question 5 rested on $\mathrm{s}$, which is an estimate of a
+parameter we have never had. This question asks whether that estimate is any
+good, and then what buying more data actually gets you.
+
+```{r}
+#| label: q6
+#| echo: true
+
+set.seed(910)
+
+iter <- 10000
+sdn <- numeric(iter)
+sdnm1 <- numeric(iter)
+for (i in 1:iter) {
+  samp        <- rnorm(n = 5, mean = 10, sd = 4)
+  sum_squares <- sum((samp - mean(samp))^2)
+  samp_size   <- length(samp)
+  sdn[i]      <- sum_squares / samp_size
+  sdnm1[i]    <- sum_squares / (samp_size - 1)
+}
+```
+
+The above code draws $10{,}000$ samples of size $n = 5$ from $\mathcal{N}(10, 4^2)$. For each sample, the average squared deviation from the sample mean is computed **two ways**: dividing by $n$ (`sdn`), and dividing by $n - 1$ (`sdnm1`).
+
+a. Report the average of each across the $10{,}000$ samples, compare both to $\sigma^2 = 16$.
+
+The true population variance is 16 so n-1 method is closer (16.02) whereas dividing by just n is too small (12.82).
+
+```{r}
+#| label: q6a
+
+# your code here
+cat('Divinding by n:', mean(sdn))
+cat('\nDividing by n-1:', mean(sdnm1))
+
+```
+
+b. Explain **why** the version that divides by $n$ comes out too small. Your answer should include $\bar{\mathrm{x}}$.
+
+Our sample variance is calculated from the sample mean $\bar{\mathrm{x}}$ which is also estimated from the same data because we don't know the true mean, $\mu$. The sample mean is in the middle of our observations which means these observations look less spread out and closer in distance from $\bar{\mathrm{x}}$. We must subtract 1 from n to account for us using this information due to it being part of the sample. So we have n-1 pieces of information left to estimate the variance. Dividing by just n will underestimate variance.
+
+c. Below are a single random subsamples of `age` of size $n = 20$, $n = 80$, and $n = 200$. For each, report the sample SD and the estimated SE of the mean.
+
+For sample size 20 the standard deviation is 9.75 and the estimated standard error of the mean is 2.18.
+For sample size 80 the standard deviation is 10.49 and the estimated standard error of the mean is 1.17.
+For sample size 200 the standard deviation is 9.12 and the estimated standard error of the mean is 0.64.
+
+```{r}
+age20 <- sample(lung$age, 20)
+age80 <- sample(lung$age, 80)
+age200 <- sample(lung$age, 200)
+```
+
+```{r}
+#| label: q7c
+
+# your code here
+cat('Standard deviation for sample size 20:', sd(age20))
+cat('\nStandard deviation for sample size 80:', sd(age80))
+cat('\nStandard deviation for sample size 200:', sd(age200))
+
+cat('\nEstimated standard error for sample size 20:', sd(age20) / sqrt(length(age20)))
+cat('\nEstimated standard error for sample size 80:',sd(age80) / sqrt(length(age80)))
+cat('\nEstimated standard error for sample size 200:',sd(age200) / sqrt(length(age200)))
+
+```
+
+d. Which of those two changes systematically with $n$, and which does not? Explain **why** in terms of what each quantity is a fact about. What changes for the sample SD as n grows?
+
+As n grows, the sample SD tends to give a more stable estimate of the population SD but it does not systematically change. The estimated SE systematically decreases as n increases. As n gets bigger, sqrt n gets bigger (increasing the denominator), so the SE gets smaller.
+Ex: n=2: 2/sqrt(2)= 1.414
+    n=12 2/sqrt(12)= 0.577
+
+e. Your $n = 200$ estimate has some standard error. A reviewer asks you to halve it. How many patients would you need in total? Justify with a formula / algebra rather than by trial and error.
+
+We start with SE = s/sqrt(n) and to halve we divide by 1/2. So our setup math is: s/sqrt(n) = 1/2* s/sqrt(n). The two s cancel out to leave a 1 on top. Finally square both sides sqrt(n)^2 = (2sqrt(n))^2 which equals 4n.
+We need 4x the starting amount and we have 200 so 200x4=800.
+
+We start with $\mathrm{SE} = \frac{s}{\sqrt{n}}$ and to halve we divide by $\frac{1}{2}$. So our setup math is: $\frac{1}{2}\frac{s}{\sqrt{n_{\mathrm{original}}}}$. The two $s$'s cancel out to leave a $1$ on top: $\frac{1}{2\sqrt{n_{\mathrm{original}}}}$. Finally, square both sides: $\left(2\sqrt{n_{\mathrm{original}}}\right)^2$ which equals: $n_{\mathrm{halved}}=4n_{\mathrm{original}}$. We need $4\times$ the starting amount and we have 200, so: $200\times4=800$.
+
+## Code appendix
+
+Everything you wrote in the chunks above, collected here and labelled by question.
+This section fills itself in — you do not need to touch it.
+
+```{r}
+#| label: appendix
+#| results: asis
+
+# Chunks that were given to you rather than written by you.
+given <- c("setup", "q4-pop", "q6", "appendix")
+
+pretty <- function(l) {
+  m <- regmatches(l, regexec("^q([0-9]+)([a-z]?)$", l))[[1]]
+  if (length(m) == 3) {
+    paste0("Question ", m[2], if (nzchar(m[3])) paste0(" (", m[3], ")") else "")
+  } else l
+}
+
+for (l in setdiff(knitr::all_labels(), given)) {
+  code <- knitr::knit_code$get(l)
+  if (!length(code)) next
+  cat("\n\n**", pretty(l), "**\n\n", sep = "")
+  cat("```r\n", paste(code, collapse = "\n"), "\n```\n", sep = "")
+}
+```

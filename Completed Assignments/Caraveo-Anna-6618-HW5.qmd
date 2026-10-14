@@ -1,0 +1,299 @@
+---
+title: "Homework 5: Simple Linear Regression"
+author: "Your name"
+format: pdf
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+<!--
+Work in this file, render it to PDF, then upload BOTH files -- this .qmd and the
+rendered .pdf -- to Canvas.
+
+Your code is graded, but it does not appear beside your answers: every chunk is
+collected automatically into a Code appendix at the end of the document. Write your
+code in the chunks where it belongs and leave the appendix alone.
+
+Set a seed with set.seed() anywhere your results depend on randomness.
+-->
+
+**Purpose of Homework Assignment 5**
+
+- **DS1 — Summarizing data.** Choose, compute, and interpret numerical and graphical summaries appropriate to a variable's type and distribution, justify the choice, and read an unfamiliar summary or plot critically.
+- **IN2 — Confidence intervals.** Construct an interval by an appropriate method and interpret it in context, stating precisely what is and is not being claimed about the parameter.
+- **IN4 — Comparing means with t-tests.** Carry out one-sample and two-sample t-tests, defend the choice between them, check the assumptions each requires, and interpret the result as a statement about a mean difference, recognizing the two-sample test as a comparison of group means within one model.
+- **IN5 — Analysis of variance.** Carry out and interpret a one-way analysis of variance, and explain the F test as a comparison of between-group to within-group variance.
+- **LR1 — Least squares theory and matrix formulation.** Derive the least squares estimators, express the model in matrix form to obtain the solution and the variance of the estimator, and state the assumptions under which the estimators are unbiased and minimum variance.
+- **LR2 — Regression inference and quality of fit.** Test hypotheses about slopes and the intercept in a linear model, and quantify the quality of fit.
+- **PS2 — Simulation studies.** Design and run a reproducible Monte Carlo study to evaluate the operating characteristics of a method, with code another person can rerun to the same result, and summarize what the study establishes.
+- **CM1 — Statistical collaboration and communication.** Translate a collaborator's research aim into a testable statistical hypothesis with an explicit estimand and an analysis capable of addressing it, and report the methods and results back in language they can act on, with the reasoning, assumptions, and limitations stated non-technically.
+
+**Write answers in the white space under each question, not inside the code chunks.**
+
+**Provide justification for your responses, a simple "yes" or "no" will not receive credit. Please also be sure to show your work.**
+
+## The data
+
+```{r}
+#| label: setup
+#| echo: true
+
+library(tidyverse)
+
+lung <- survival::lung
+```
+
+We return to `lung` again for this assignment. `wt.loss` is weight lost in the last six months, in pounds. `ph.karno` is the physician's **Karnofsky** score,
+which rates how well a patient can carry out ordinary activity: $100$ is normal
+with no complaints, and each step of $10$ below it is a further loss of function
+($0$ is death).
+
+The oncologist from Homework 4 is back with a practical idea: *the Karnofsky score
+is already recorded at every visit. If patients with lower scores are the ones
+losing weight, the score could be used to refer patients to nutrition support
+earlier.*
+
+::: {.callout-tip}
+## Getting help
+- `coef()`, `residuals()`, `fitted()`, `summary()`, `confint()`, and `anova()` all take a fitted model from `lm()`.
+- `coef(summary(fit))` is the coefficient table as a matrix, so `coef(summary(fit))["ph.karno", "Std. Error"]` pulls out one entry.
+- Arithmetic inside a formula needs `I()`: `lm(y ~ I(x - 80))`.
+- For matrices, `cbind(1, x)` builds a design matrix, `t()` transposes, `%*%` multiplies, and `solve()` inverts.
+- `predict(fit, newdata = tibble(ph.karno = 70), interval = "confidence")` gives a fitted value with an interval; `interval = "prediction"` gives the other kind.
+:::
+
+\newpage
+
+### Question 1 (DS1, LR1) — Fitting the line
+
+a. **[DS1]** Keep the patients with both `wt.loss` and `ph.karno` recorded. Plot `wt.loss` against `ph.karno`. `ph.karno` takes only six values, so the points stack on top of each other; choose a way of plotting that keeps them visible. Add the mean weight loss at each score to the same plot (the **graph of averages**). Do the six means fall close to a line? 
+
+They mostly fall close to a line around wt.loss y = 12.5 until you get to 90 and 100 ph.karno where it drops to around 9 and 4, roughly eyeballing it.
+
+```{r}
+#| label: q1a
+
+# your code here
+lung_complete <- lung[complete.cases(lung[, c("wt.loss", "ph.karno")]), ]
+
+ggplot(lung_complete, aes(x = ph.karno, y = wt.loss)) +
+  geom_jitter(width = 1, height = 0) +
+  stat_summary(fun = mean, geom = "point", color = "red", size = 3)
+```
+
+b. **[LR1]** Compute $\mathrm{S}_{\mathrm{xx}}$, $\mathrm{S}_{\mathrm{xy}}$, $\hat{\beta}_1$, and $\hat{\beta}_0$ "by hand" for the regression of `wt.loss` on `ph.karno`. Confirm them against `lm()`, and then a third time with the matrix formula $\hat{\boldsymbol{\beta}} = (\mathbf{X}^\top\mathbf{X})^{-1}\mathbf{X}^\top\mathbf{y}$. Save the `lm()` fit as `fit`; later questions refer to it. **Save your values as objects and reuse them; do not retype numbers.**
+
+The slope -0.1872 and intercept 25.193 line up with the verification methods. 
+
+```{r}
+#| label: q1b
+
+# your code here
+x <- lung_complete$ph.karno
+y <- lung_complete$wt.loss
+
+Sxx <- sum((x - mean(x))^2)
+Sxy <- sum((x - mean(x)) * (y - mean(y)))
+
+beta1_hand <- Sxy / Sxx
+beta0_hand <- mean(y) - beta1_hand * mean(x)
+
+fit <- lm(wt.loss ~ ph.karno, data = lung_complete)
+coef(fit)
+
+X <- cbind(1, x)
+beta_matrix <- solve(t(X) %*% X) %*% t(X) %*% y
+beta_matrix
+
+cat("\nSxx =", Sxy)
+cat("\nSxy =", Sxy)
+cat("\nSlope =", beta1_hand)
+cat("\nIntercept =", beta0_hand)
+```
+
+c. **[LR1]** Interpret the slope for a comparison of patients whose Karnofsky scores differ by one step of $10$. Then interpret the intercept literally, and say why that literal reading is meaningless here. Refit with `ph.karno` centered at $80$, a score that is actually observed. Report both new coefficients and interpret the new intercept.
+
+Slope: For every 10-point increase in Karnofsky score, the predicted weight loss decreases by approximately 1.87 pounds, on average.
+
+Intercept (Literally): The intercept indicates that a patient with a Karnofsky score of 0 is predicted to have lost approximately 25.19 pounds. However, this interpretation is meaningless  because a score of 0 represents death...which isn't a great predictor for a living patient.
+
+After centering Karnofsky score at 80, the intercept indicates that a patient with a Karnofsky score of 80 is predicted to have lost approximately 10.216lbs. This interpretation is more meaningful because a score of 80 is an observed value. The slope remains −0.1872, meaning that each one-point increase in Karnofsky score is associated with a predicted decrease of approximately 0.187 pounds in weight loss.
+
+```{r}
+#| label: q1c
+
+# your code here
+coef(fit)
+
+fit_centered <- lm(wt.loss ~ I(ph.karno - 80), data = lung_complete)
+coef(fit_centered)
+```
+
+\newpage
+
+### Question 2 (LR1, IN4) — Standard errors, and a test you have already run
+
+a. **[LR1]** From the residuals, compute $\mathrm{SSE}$ and $\hat{\sigma}^2$. Use them to compute the standard errors of $\hat{\beta}_0$ and $\hat{\beta}_1$, and confirm against `summary()`.
+
+```{r}
+#| label: q2a
+
+# your code here
+e <- residuals(fit)
+n <- length(e)
+SSE <- sum(e^2)
+sigma2_hat <- SSE / (n - 2)
+SE_beta1 <- sqrt(sigma2_hat / Sxx)
+
+SE_beta0 <- sqrt(sigma2_hat * (1/n + mean(x)^2 / Sxx))
+
+cat("\nSSE =", SSE)
+cat("\nEstimated error variance =", sigma2_hat)
+cat("\nStandard error of intercept =", SE_beta0)
+cat("\nStandard error of slope =", SE_beta1)
+
+summary(fit)
+```
+
+b. **[LR1]** The slope can be written as a weighted sum of the responses,
+
+   $$
+   \hat{\beta}_1 = \sum_{i=1}^n w_i \mathrm{y}_i, \qquad w_i = \frac{\mathrm{x}_i - \bar{\mathrm{x}}}{\mathrm{S}_{\mathrm{xx}}}.
+   $$
+
+   i. Show that this equals $\mathrm{S}_{\mathrm{xy}}/\mathrm{S}_{\mathrm{xx}}$. (Hint: $\sum_i(\mathrm{x}_i - \bar{\mathrm{x}})\bar{\mathrm{y}} = 0$.)
+   ii. What does $\sum_i w_i$ equal? Show that $\sum_i w_i \mathrm{x}_i = 1$.
+   iii. Show that $\mathbb{E}(\hat{\beta}_1) = \beta_1$.
+   iv. Show that $\text{Var}(\hat{\beta}_1) = \sigma^2/\mathrm{S}_{\mathrm{xx}}$.
+   v. For the steps in iii and iv, which model assumptions did you need?
+   
+c. **[LR1]** Suppose the study had enrolled only patients with a Karnofsky score of $80$ or more (but the sample size was the same). What would happen to the slope's standard error?
+
+d. **[IN4]** In Homework 4, Question 3, you compared weight loss between men and women with a pooled two-sample $t$-test. Now consider fitting `lm(wt.loss ~ sex, data = lung)`. 
+
+   i. What is the slope an estimate of, and how do its $t$ statistic and $p$-value relate to that test? 
+   ii. `sex` is coded $1$ for male and $2$ for female: what does the intercept estimate? What would the intercept and slope be if `sex` were recoded to $0$ for male and $1$ for female? (Try to answer without actually running this alternative recoding)
+
+```{r}
+#| label: q2d
+
+# your code here
+fit_sex <- lm(wt.loss ~ sex, data = lung)
+summary(fit_sex)
+
+```
+
+\newpage
+
+### Question 3 (PS2, LR1) — What each assumption buys
+
+Question 2(b) suggests unbiasedness needs fewer assumptions than the standard error
+does. Here we check that by simulation.
+
+```{r}
+#| label: q3-given
+#| echo: true
+
+x_sim <- rep(1:10, times = 2)
+n_sim <- length(x_sim)
+beta0 <- 5
+beta1 <- 1
+```
+
+a. **[PS2]** Set your seed to $6618$. Simulate $10{,}000$ datasets $\mathrm{Y}_i = \beta_0 + \beta_1\mathrm{x}_i + \varepsilon_i$ with $\varepsilon_i \sim \mathcal{N}(0, 1)$, keeping `x_sim` the same in every dataset. For each, fit `lm()` and record $\hat{\beta}_1$ and its standard error. Report the mean and SD of the $\hat{\beta}_1$'s against $\beta_1$ and $\sigma/\sqrt{\mathrm{S}_{\mathrm{xx}}}$. 
+
+```{r}
+#| label: q3a
+
+# your code here
+
+```
+
+b. **[PS2]** Now break one of the assumptions and leave everything else in the study alone. Repeat (a) with **paired errors**. The two observations at each value of $\mathrm{x}$ share part of their error, as two measurements on the same patient likely would. Draw $\mathrm{u}_1, \ldots, \mathrm{u}_{10} \sim \mathcal{N}(0, \sigma^2 = 0.5)$ once per dataset and set $\varepsilon_i = \mathrm{u}_{\mathrm{x}_i} + \mathrm{e}_i$ with $\mathrm{e}_i \sim \mathcal{N}(0, 0.5)$. Note each $\varepsilon_i$ still has mean $0$ and variance $1$. **I would just recommend copying and pasting your code from (a) and modifying.**
+   
+```{r}
+#| label: q3bi
+
+# your code here
+
+```
+
+
+c. **[LR1]** What assumption was broken? Did this affect unbiasedness? Standard error? 
+
+\newpage
+
+### Question 4 (LR2, IN2, IN5, CM1) — Answering the collaborator
+
+a. **[LR2]** Write $H_0$ and $H_1$ for the collaborator's question as **statements**. 
+
+b. **[CM1]** Report the estimate (in meaningful units), $t$ statistic, its degrees of freedom, and the two-sided $p$-value from `summary(fit)`, and state the conclusion as might appear in a manuscript. Hint: Copy the appropriate hypothesis from a, add the $t$ statistic, its degrees of freedom, and the two-sided $p$-value to the end in (). And then add a second sentence interpreting the effect.
+
+```{r}
+#| label: q4b
+
+# your code here
+
+```
+
+c. **[IN2]** The collaborator thinks in steps of $10$ on the Karnofsky scale. Give the $95\%$ confidence interval for the difference in mean weight loss between patients whose scores differ by $10$ points, starting from `confint(fit)`. Explain why your approach is legitimate. Could the conclusion in (a) change with the unit?
+
+```{r}
+#| label: q4c
+
+# your code here
+
+```
+
+d. **[IN5]** Compute $\mathrm{SS}_{\text{total}}$, $\mathrm{SS}_{\text{model}}$, and $\mathrm{SS}_{\text{error}}$ "by hand" and check that they add up. Compute $R^2$ from them, and check it against `summary(fit)`.
+
+```{r}
+#| label: q4d
+
+# your code here
+
+```
+
+e. **[CM1]** The collaborator reads your results and says: "So the Karnofsky score is a good way to pick out the patients who are losing weight. The slope is significant." Is the collaborator right? Reconcile the $p$-value in (a) with your $R^2$.
+
+f. **[LR2]** A new patient arrives with a Karnofsky score of $70$. Compute the $95\%$ confidence interval for the mean weight loss at that score and the $95\%$ prediction interval for this patient. You may use `predict(fit, newdata = data.frame(ph.karno = 70), ...)`. Which one answers the collaborator's question about *this patient*? Why is the second interval is so much wider? Would enrolling more patients would narrow it?
+
+```{r}
+#| label: q4f
+
+# your code here
+
+```
+
+g. **[CM1]** Write a couple of sentences to the oncologist answering their idea about using the Karnofsky score to target nutrition referrals. Give the estimate with its uncertainty (e.g. a CI), say what it does and does not support, and avoid statistical jargon.
+
+\newpage
+
+## Code appendix
+
+Everything you wrote in the chunks above, collected here and labelled by question.
+This section fills itself in — you do not need to touch it.
+
+```{r}
+#| label: appendix
+#| results: asis
+
+# Chunks that were given to you rather than written by you.
+given <- c("setup", "q3-given", "appendix")
+
+pretty <- function(l) {
+  m <- regmatches(l, regexec("^q([0-9]+)([a-z]?)$", l))[[1]]
+  if (length(m) == 3) {
+    paste0("Question ", m[2], if (nzchar(m[3])) paste0(" (", m[3], ")") else "")
+  } else l
+}
+
+for (l in setdiff(knitr::all_labels(), given)) {
+  code <- knitr::knit_code$get(l)
+  if (!length(code)) next
+  cat("\n\n**", pretty(l), "**\n\n", sep = "")
+  cat("```r\n", paste(code, collapse = "\n"), "\n```\n", sep = "")
+}
+```

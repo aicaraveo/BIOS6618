@@ -1,0 +1,357 @@
+---
+title: "Homework 1: Exploratory Data Analysis"
+author: "Anna Caraveo"
+format: pdf
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+<!--
+Work in this file, render it to PDF, then upload BOTH files -- this .qmd and the
+rendered .pdf -- to your individual OneDrive folder.
+
+Your code is graded, but it does not appear beside your answers: every chunk is
+collected automatically into a Code appendix at the end of the document. Write your
+code in the chunks where it belongs and leave the appendix alone.
+
+Set a seed with set.seed() anywhere your results depend on randomness.
+-->
+
+**Purpose of Homework Assignment 1**
+**DS2 — Data screening.** Identify the unit of observation and how the data are structured, quantify and describe the pattern of missing data, distinguish data errors from genuine extreme values, and state how each affects the analysis that follows.
+
+**Write answers in the white space under each question, not inside the code chunks.**
+
+**Provide justification for your responses, a simple "yes" or "no" will not receive credit.**
+
+## The data
+
+```{r}
+#| label: setup
+#| echo: true
+
+library(tidyverse)
+
+lung <- survival::lung
+```
+
+`lung` records patients with advanced lung cancer, enrolled by the North
+Central Cancer Treatment Group. It ships with the **survival** package, which
+comes with R — you do not need to install anything.
+
+Ignore `time` and `status`. Those are survival outcomes and we will not cover survival in this course.
+
+\newpage
+
+::: {.callout-tip}
+## Getting help
+- In the console, `?nrow` opens a function's documentation and also works for built in datasets. 
+- Posit's Help → Cheatsheets are one-page references for packages in the tidyverse (what we will mainly use in this course), including ones for  [dplyr](https://rstudio.github.io/cheatsheets/html/data-transformation.html) and  [ggplot2](https://rstudio.github.io/cheatsheets/html/data-visualization.html) that cover most of this assignment
+:::
+
+### Question 1 (DS2) — What is a row?
+
+::: {.callout-tip}
+`nrow()` counts rows. `n_distinct()` counts unique values. `count()` provides tabulations. `arrange(desc(n)) ` will sort your rows in descending order by column `n`.
+:::
+
+```{r}
+#| label: q1
+
+# your code here
+cat('Number of rows is:', nrow(lung)) #to show how many rows there are
+?lung #to find a description of the dataset 
+lung |>
+  filter(!is.na(inst)) |>
+  count(inst) |> #note to self: create() will create a rows for distinct patients
+  summarise(distinct_inst = n_distinct(inst),
+  largest_inst_patients = max(n),
+            )
+```
+
+a. How many rows does `lung` have?
+Using cat() or clicking on the 'lung' dataset under 'Data' in 'Environment', to verify, I can see there are *228* rows.
+
+b. What does each row represent?
+Each row represents an observation or, looking more closely at the description using ?lung, an observation correlates with a single patient. 
+
+c. How many distinct institutions are there, and how many patients are at the largest one?
+There are 18 distinct institutions with the biggest having 36 patients (this being institute assigned code '1').
+
+d. Nearly every method in this course assumes rows are **independent**. Given your answers to a-c, is that assumption reasonable here?
+Each patients has their own row which contains their own medical data, such as weight loss and meal calories, but multiple patients can reside at the same institute. For independence, a single patient's outcome should not be determined by others. For example, one institute's physician may rate ECOG performance differently than another physician at a different location, or perhaps the same food dish is offered at two different institutes but the preparation differs and thus calories differ. So, ultimately, the patients at institute '1' may be more similar to each other than comparing them to institute '2'. 
+
+### Question 2 (DS1) — Choosing a summary
+
+a. For each variable below, state its **type** (nominal, ordinal, discrete, or continuous) and the **summary you would report** for it.
+
+| Variable | Type | Summary you would report |
+|---|---|---|
+| `age` | | | discrete (IF just looking at the data set provided where it gives integer values...otherwise  continuous, since you could be 15 years old, 3 months, 6 days...)
+| `sex` | | | nominal (It says 'Male=1 Female=2', but these are not ordered)
+| `ph.ecog` | | |ordinal (We have ordered numbers that act as a categorical container for level of symptoms)
+| `wt.loss` | | |discrete (IF just looking at the data set provided where it gives integer values...otherwise continuous, since you could lose 5.43lbs..)
+
+Ok, here we go: 
+Sex, I would use counts, n, and percentages (%) and bar charts for visual.
+ph.ecog, I would use counts, n, percentages (%), median, and bar charts for visual. 
+For age and wt.loss I looked at their hisotgrams (when I click 'lung' under 'Environment' and then 'Summary'). For the purpose of answering this question simply I'm going to say age is fairly normally distributed (it does look a bit left skewed though) and thus I'd go with mean and standard deviation. 
+Weight loss is right skewed so I'd go with IQR and median.
+
+b. A classmate runs the following and reports "the average ph.ecog is 0.952 with a standard deviation of 0.718."
+
+```{r}
+#| label: q2b-mean
+#| echo: true
+
+mean(lung$ph.ecog, na.rm = TRUE)
+sd(lung$ph.ecog, na.rm = TRUE)
+```
+
+Show the summary you suggested in (a) and explain why it is preferred.
+
+```{r}
+#| label: q2b
+
+# your code here
+cat('The median is: ', median(lung$ph.ecog, na.rm = TRUE))
+counts <- table(lung$ph.ecog) #note to self, gives error if I forget to take out the na.rm = TRUE...table() does it already
+
+percents <- prop.table(table(lung$ph.ecog)) * 100
+
+data.frame( # #ooooh pretty labels :)
+  Category = names(percents),
+  Percentage = as.numeric(percents),
+  Counts = as.numeric(counts)
+)
+#also note to self and as a reference (R charting dictionary): https://r-graph-gallery.com/81-barplot-with-variable-width.html
+
+ggplot(lung, aes(x = factor(ph.ecog), fill = factor(ph.ecog))) +
+  geom_bar() +
+  labs(
+    x = "ECOG Performance Score",
+    y = "Number of Patients"
+  )
+
+```
+
+\newpage
+
+### Question 3 (DS1) — Describing the outcome
+
+::: {.callout-tip}
+For (c) consider: `group_by()`, `summarise()`, and `n()`. `drop_na()` is worth calling before you group.
+:::
+
+a. Plot the distribution of `wt.loss`. Choose the binwidth (or bandwidth) yourself rather than accepting the default. **Explain why you chose the width you did. Describe the shape of the distribution.**
+
+I chose 15. You can see the shape at a lower bin size (I was comparing against 10), but for me it stood out more, with not a lot of noise, at around 15. I did try out much bigger numbers, such as 40+, which definitely introduced noise, but the peak right before 0 became stark. This made me more comfortable with choosing bin 15 size because you begin to see the jumps between values rather than it looking closer to a smooth curve/clumped values. This shows a right or positive skew. It shows that the highest number of patients were just below the 0 pounds lost (-5 < x < 0), or roughly in the 5 pounds gained category. Then the remainder fell between 0 and 20 pounds lost, declining fairly steadily. The the lowest number of patients were outside these ranges (x < -5 & x > 30)
+
+```{r}
+#| label: q3a
+
+# your code here
+hist(lung$wt.loss, breaks = 10) # this is a not-pretty one I used to click back and forth to test out my bin sizes
+
+hist(lung$wt.loss,
+     main = "Distribution of Weight Loss",
+     xlab = "Pounds Lost",                 
+     ylab = "Patients",              
+     col = "skyblue",               
+     breaks = 15)    
+```
+
+b. Compute the mean and the median of `wt.loss`, each with a matching measure of spread. Which pair would you report, and why? **Refer to your plot from part (a)** in the justification.
+
+The distribution is right skewed which means the higher values can pull the mean up and thus not be a good representation of a general patient. Median is less affected by this (since it's looking at just the middle value rather than weighting each input) so I would go with median and IQR.
+```{r}
+#| label: q3b
+
+# your code here
+cat('Mean is: ', mean(lung$wt.loss, na.rm = TRUE))
+cat('\nStandard Deviation is: ',sd(lung$wt.loss, na.rm = TRUE))
+
+cat('\nMedian is: ',median(lung$wt.loss, na.rm = TRUE))
+cat('\nInterquartile range is: ',IQR(lung$wt.loss, na.rm = TRUE))
+```
+
+c. Now do the same **within each level of `ph.ecog`**: report an appropriate center and spread per group along with the group sizes.
+
+Uhhh honesty not sure if this is all you're looking for (I'm happy to revise if you're looking for something else). Column 'ph.ecog' is the category, 'n' is groups size for those categories, and median and IQR also have a column relating to their respective category. Category 0 (asymptomatic) has 61 patients, a median of 4, and IQR of 10. Category 1 (symptomatic but completely ambulatory) has 106 patients, median of 6, and IQR of 15. Category 2 (in bed <50% of the day) has 45 patients, a median of 10, and a IQR of 20. Category 3 (bedbound) has 1 patient, a median of 20, and an IQR of 0.
+
+```{r}
+#| label: q3c
+
+# your code here
+lung |>
+  drop_na(ph.ecog, wt.loss) |>
+  group_by(ph.ecog) |>
+  summarise(
+    n = n(), #patient number in groups
+    median = median(wt.loss),
+    IQR = IQR(wt.loss)
+  )
+
+```
+
+d. Make a plot comparing the group's `wt.loss`. Describe the pattern. Do any of the group's make you uncomfortable summarizing? Hint: use the code `mutate(ph.ecog = factor(ph.ecog, levels = 0:3))` to tell R that `ph.ecog` is ordinal.
+
+As ECOG performance score increases in category, weight loss increases (median is higher at each increasing interval) as well as spread (until category 3). Category 3 only has a single patient so I would not be comfortable summarizing that as we cannot determine spread or variability. 
+
+```{r}
+#| label: q3d
+
+# your code here
+lung |>
+  drop_na(ph.ecog, wt.loss) |>
+  mutate(ph.ecog = factor(ph.ecog, levels = 0:3)) |>
+  ggplot(aes(x = ph.ecog, y = wt.loss)) +
+  geom_boxplot() +
+  labs(
+    x = "ECOG Performance Score",
+    y = "Weight Loss (lbs)"
+  )
+
+```
+
+\newpage
+
+### Question 4 (DS1) — Reading an unfamiliar plot
+
+`lung` scores each patient's **Karnofsky performance** twice: `ph.karno` as rated by
+the physician, `pat.karno` as rated by the patient. Same quantity, two raters.
+
+Below is one way method-comparison studies show whether two measurements agree.
+
+```{r}
+#| label: q4
+#| echo: true
+#| fig-height: 3.4
+
+ba <- lung |>
+  drop_na(ph.karno, pat.karno) |>
+  mutate(avg  = (ph.karno + pat.karno) / 2, #for patient 1, the ph.karno is 90 and the pat.karno is 100 so the average is 95
+         diff = ph.karno - pat.karno) #then the difference is 90-100 = -10
+
+bias <- mean(ba$diff) #average difference between physician and patient
+loa  <- bias + c(-1.96, 1.96) * sd(ba$diff) #limits of agreement (95%)
+
+ggplot(ba, aes(avg, diff)) +
+  geom_hline(yintercept = 0, colour = "grey75") +
+  geom_hline(yintercept = bias, linewidth = 1) + #bias is the solid line
+  geom_hline(yintercept = loa, linetype = "dashed") + #limits are dashed
+  geom_jitter(width = 1.2, height = 1.2, alpha = 0.5) +
+  labs(x = "Mean of the two ratings", y = "Physician − patient")
+```
+
+::: {.callout-tip}
+`cor()` returns `NA` when either variable has missing values
+unless you tell it otherwise. See the `use` argument in `?cor` and tell it to use complete observations only.
+:::
+
+a. What does each axis show, and what would **perfect agreement** look like on this plot?
+The y-axis is showing the difference between physician and patient (line in code: diff = ph.karno - pat.karno). So for patient 1, it would be 90-100 = -10. Perfect agreement would dots placed at 0. If all cases were perfect agreement the limits of agreement (dashed lines) and bias (solid dark line) would also be at 0. 
+
+b. Why do the points fall in a pattern like they do? (What is it about the underlying data? Note: `geom_jitter` creates a scatter plot with points perturbed so they do not fall exactly on top of one another. All the clusters represent the exact same x,y values)
+Looking over the dataset it's quickly evident that scores are mostly above 60 and they are in discrete increments of 10. This only leaves so many combinations. For example: both patient 25 and 26 have the same difference of 90-80=10 and an average of 85. Those dots will be slightly offset for visuals but are clustered. You can then have clustering due to same difference, but different averages. Ex: 90-80=10 and so does 70-60=10 but the averages would be 85 and 65, respectively. This would create points with the same y-coordinate and different x-coordinate. You could also have the inverse case of same average and varying difference which would lead to points with the same x-coordinate and different y-coordinate. 
+
+c. The solid line is the mean difference, $2.1$ points. A collaborator sees it and concludes "physicians and patients basically agree." The dashed lines sit at that mean $\pm 1.96$ SD of the differences (should capture ~95% of the differences under the assumption the data is normally distributed). What do they say about the collaborator's conclusion? 
+A mean difference of 2.1 does appear small but an individual patient could fall pretty far from that line. The dashed lines are the mean difference +/- 1.96 times the standard deviation of the difference and should contain 95% of the differences; this is a wide range so I believe the collaborator is being to hasty.
+
+d. Compute the correlation between the two ratings. Explain why a correlation cannot answer the question this plot is asking.
+
+```{r}
+#| label: q4d
+
+# your code here
+?cor
+cat('r value is: ', cor(lung$ph.karno, lung$pat.karno, use = "complete.obs"))
+```
+0.52 r value is a moderate positive correlation; closer to 1 is needed to show strong correlation. But this correlation number is showing the relationship of physician and patient scoring increasing/decreasing together.The figure is looking at the difference in answer between the physician and patient. So, going back to my previous example, I used one case where the ph.karno - pat.karno was 90-80 and a second case where it was 70-60. The correlation would identify that both the physician and patient increased together, but it does not identify that there is difference between the two of 10. 
+
+### Question 5 (DS2) — How much is missing, and does it matter?
+
+::: {.callout-tip}
+(a) See `?is.na`
+:::
+
+```{r}
+#| label: q5
+
+# your code here
+cat('Missing value count:', sum(is.na(lung$meal.cal)))
+cat('\nPercentage missing: ', mean(is.na(lung$meal.cal))*100)
+
+# count(lung, is.na(meal.cal))
+
+vars <- lung[, c("age", "sex", "ph.ecog", "meal.cal", "wt.loss")] #note to self, leave space before comma empty to signify we are looking at all rows
+
+cat('\nPatients lost: ', sum(!complete.cases(vars)))
+cat('\nPercentage of patients lost: ', mean(!complete.cases(vars)) * 100)
+
+```
+
+a. How many values of `meal.cal` are missing, and what percentage of the dataset is that?
+47 values are missing which is 20.61%. This agrees with the percentage when I view the 'Summary' of meal.cal, which says 21%. 
+
+b. If you fit a model using `age`, `sex`, `ph.ecog`, `meal.cal`, and `wt.loss`, R will silently drop every row with a missing value in any of them. How many patients would you lose, and what percentage of the sample is that?
+You would lose 58 patients which is 25.4%. You'd lose patients and information doing that method even if meal.cal was the only column they had a 'NA' and you weren't looking into that.
+
+c. `meal.cal` is calories consumed at meals, recorded for patients with advanced cancer. Give one plausible reason a value might be missing that **would** bias an analysis of nutrition, and one that would not. How might you tell the two apart?
+If a patient was too sick to eat or keep food down and that was the reason it was not recorded, would be biased. This very sick patient would likely have a different calorie intake, had they been able to consume the food, than another patient, not as advanced in their illness.
+
+Looking at a different patient, that consumed their meal, if the calories were not logged due to a nurse accidentally forgetting or the data point not being saved in the system, this is something that could happen to any patient, no matter condition or calorie intake. This would reduce sample size but would not be due to bias from the patient's condition.
+
+\newpage
+
+### Question 6 (DS2) — Errors, implausible values, and real extremes
+
+```{r}
+#| label: q6
+
+# your code here
+cat('Minimum of wt.loss: ', min(lung$wt.loss, na.rm = TRUE))
+cat('\nMaximum of wt.loss: ', max(lung$wt.loss, na.rm = TRUE))
+cat('\nSum of patients with negative values in wt.loss: ', sum(lung$wt.loss < 0, na.rm = TRUE))
+
+```
+
+a. Report the minimum and maximum of `wt.loss`. How many patients have a **negative** value?
+The minimum of wt.loss is -24lbs (which would mean 24lbs gained...suspicious) with maximum of wt.loss is 68lbs (which would mean 68lbs lost over the six months). There are 27 patients with negative values. 
+
+b. `wt.loss` is described as "weight loss in the last six months." Classify the negative values as one of: an impossible value that must be a data error, an implausible value worth checking, or a genuine and meaningful observation. Justify your choice in one sentence.
+I believe if there is question raised, it's worth checking, but I think this may be a genuinely meaningful observation. If 99% of the data set had gained considerable weight, that would probably be improbable, but there a slew of reasons both on the illness side and the medications (ex: steroids) given to the patients that increase fluid retention. Unfortunately, it's not terribly strange that someone retains 'a lot' of water weight during severe illness. Note, this also depends on how the data was gathered; if they truly only recorded weight *loss* and no weight gained...than that may signify an issue. I would think it odd if they threw out patients if they gained weight, so I think it's likely they included both, but with the expectation there would be more weight loss. Maybe, weight.flucutation would have been a better name. 
+
+c. State what you would do with these rows in an analysis of weight loss.
+We are trying to paint as full of an understanding as we can with data. Additionally with my brief explanation in 'b', I would keep these rows in an analysis. If there is concern I could save them and include them later on once I clarified gathering methods and such.
+
+\newpage
+
+## Code appendix
+
+Everything you wrote in the chunks above, collected here and labelled by question.
+This section fills itself in — you do not need to touch it.
+
+```{r}
+#| label: appendix
+#| results: asis
+
+# Chunks that were given to you rather than written by you.
+given <- c("setup", "q2b-mean", "q4", "appendix")
+
+pretty <- function(l) {
+  m <- regmatches(l, regexec("^q([0-9]+)([a-z]?)$", l))[[1]]
+  if (length(m) == 3) {
+    paste0("Question ", m[2], if (nzchar(m[3])) paste0(" (", m[3], ")") else "")
+  } else l
+}
+
+for (l in setdiff(knitr::all_labels(), given)) {
+  code <- knitr::knit_code$get(l)
+  if (!length(code)) next
+  cat("\n\n**", pretty(l), "**\n\n", sep = "")
+  cat("```r\n", paste(code, collapse = "\n"), "\n```\n", sep = "")
+}
+```
